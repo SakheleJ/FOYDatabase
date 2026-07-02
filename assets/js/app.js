@@ -1,4 +1,4 @@
-document.addEventListener("DOMContentLoaded", init);
+document.addEventListener("DOMContentLoaded", function() { initDatabase().then(init); });
 
 // Create timestamp (YYMMDD_HHMM)
 const now = new Date();
@@ -10,26 +10,29 @@ const minutes = String(now.getMinutes()).padStart(2, "0");
 const timestamp = `${year}${month}${day}_${hours}${minutes}`;
 
 function init() {
-  // Initialize default DB if not set
-  if (!localStorage.getItem("foyDB")) {
-    const defaultDB = {
-      users: [
-        {
-          UserID: 1,
-          name: "admin",
-          email: "admin@foy.co.za",
-          password: "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
-          role: "DBadmin"
-        }
-      ]
-    };
-    localStorage.setItem("foyDB", JSON.stringify(defaultDB));
+  // Seed a default admin user if the database is brand new (no users yet)
+  const db = getDatabase();
+  if (!db.users || db.users.length === 0) {
+    db.users = [{
+      UserID: 1,
+      name: "admin",
+      email: "admin@foy.co.za",
+      password: "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+      role: "DBadmin"
+    }];
+    saveDatabase(db);
   }
 
   const fileInput = document.getElementById("file-input");
   if (fileInput) fileInput.addEventListener("change", handleFileSelect);
 
   updateFileStatus();
+
+  try {
+    const user = JSON.parse(localStorage.getItem("currentUser") || '{}');
+    const isAdmin = user.role === 'Admin' || user.role === 'DBadmin';
+    document.querySelectorAll('.admin-only').forEach(el => el.classList.toggle('d-none', !isAdmin));
+  } catch (e) {}
 }
 
 // Run on every page except index.html
@@ -43,6 +46,7 @@ function init() {
         window.location.href = "index.html";
     }
 })();
+
 
 
 function getSelectedCongregation() {
