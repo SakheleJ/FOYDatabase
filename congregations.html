@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -9,6 +9,7 @@
 
   <!-- Bootstrap CSS -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
 
   <link rel="stylesheet" href="assets/css/style.css">
 </head>
@@ -24,6 +25,7 @@
       <button class="btn btn-sm text-white buttonRegister" data-bs-toggle="modal"        data-bs-target="#registerCongregationModal">Register Congregation</button>
       <button class="btn btn-sm text-white buttonRegister" data-bs-toggle="modal"        data-bs-target="#registerUserModal">Register User</button>
       <button class="btn btn-sm text-white buttonRegister" onclick="exportDatabase()">Export Data</button>
+            <button class="btn btn-sm btn-outline-light" id="syncSheetBtn" onclick="manualSyncFromSheet()" title="Sync latest data from Google Sheet">&#x21BB; Sync</button>
       <button class="btn btn-sm text-white buttonLogout" onclick="logout()">Logout</button>
     </div>
   </header>
@@ -50,7 +52,31 @@
 
   <div class="main">
     <div class="mt-4 ms-3 me-3">
-      <h3 class="mb-3">Congregations</h3>
+      <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <h3 class="mb-0">Congregations</h3>
+        <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#registerCongregationModal">
+          <i class="bi bi-plus-circle me-1"></i>Register Congregation
+        </button>
+      </div>
+
+      <div class="d-flex gap-2 mb-3 align-items-center flex-wrap">
+        <div class="input-group" style="max-width: 280px;">
+          <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+          <input type="text" id="congregationSearch" class="form-control" placeholder="Search congregations...">
+        </div>
+        <select id="congregationSort" class="form-select" style="max-width: 200px; width: auto;">
+          <option value="period">Sort by Last Period</option>
+          <option value="name">Sort by Name</option>
+          <option value="active">Sort by Active Members</option>
+        </select>
+        <span class="ms-auto text-muted small" id="congregationStats"></span>
+      </div>
+
+      <div id="congregationEmpty" class="text-center py-5 d-none">
+        <i class="bi bi-building-slash display-4 text-muted"></i>
+        <p class="text-muted mt-2 mb-1">No congregations found.</p>
+        <a href="#" data-bs-toggle="modal" data-bs-target="#registerCongregationModal">Register the first one</a>
+      </div>
 
       <div class="row" id="congregationList">
         <!-- Cards will load here dynamically -->
@@ -83,7 +109,19 @@
                 <option value="Admin">Admin</option>
               </select>
             </div>
-          </form>
+
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Presbytery Access</label>
+              <select id="userPresbytery" class="form-select">
+                <option value="ALL">ALL</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Congregation Access</label>
+              <select id="userCongregation" class="form-select">
+                <option value="ALL">ALL</option>
+              </select>
+            </div>          </form>
         </div>
         <div class="modal-footer">
           <p class="error-message" id="register-error"></p>
@@ -152,11 +190,70 @@
   </div>
 
 
+  <!-- Edit Congregation Modal -->
+  <div class="modal fade" id="editCongregationModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header bg-success text-white">
+          <h5 class="modal-title"><i class="bi bi-pencil me-1"></i>Edit Congregation</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="editCongregationID" />
+          <div class="mb-3">
+            <input type="text" id="editCongregationName" class="form-control" placeholder="Congregation Name" required />
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Presbytery</label>
+            <select id="editCongregationPresbytery" class="form-select"></select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <p class="error-message" id="edit-congregation-error"></p>
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-success" onclick="saveEditCongregation()">Save Changes</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div class="modal fade" id="deleteCongregationModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+      <div class="modal-content">
+        <div class="modal-header bg-danger text-white">
+          <h5 class="modal-title"><i class="bi bi-exclamation-triangle me-1"></i>Confirm Delete</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-1">Delete <strong id="deleteCongregationName"></strong>?</p>
+          <p id="deleteCongregationWarning" class="text-danger small mb-0 d-none"></p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-danger btn-sm" id="confirmDeleteCongregationBtn">Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notifications -->
+  <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 9999;">
+    <div id="appToast" class="toast align-items-center text-white border-0" role="alert" aria-live="assertive">
+      <div class="d-flex">
+        <div class="toast-body" id="appToastBody"></div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+    </div>
+  </div>
+
   <!-- <script src="script.js"></script> -->
   <!-- <script src="dashboard.js"></script> -->
   <!-- Core Shared Scripts -->
   <script src="assets/js/utils.js"></script>
   <script src="assets/js/db.js"></script>
+  <script src="assets/js/sheet.js"></script>
+  <script src="assets/js/audit.js"></script>
   <script src="assets/js/ui.js"></script>
 
   <!-- Authentication -->

@@ -1,3 +1,19 @@
+// Returns the logged-in user's data scope.
+// { presbytery: "ALL"|"Name", congregation: "ALL"|"Name" }
+function getUserScope() {
+  try {
+    const u = JSON.parse(localStorage.getItem("currentUser") || "{}");
+    const pres = u.presbytery   || "ALL";
+    const cong = u.congregation || "ALL";
+    return {
+      presbytery:   pres.toLowerCase() === "all" ? "ALL" : pres,
+      congregation: cong.toLowerCase() === "all" ? "ALL" : cong
+    };
+  } catch (e) {
+    return { presbytery: "ALL", congregation: "ALL" };
+  }
+}
+
 function generateGUID() {
   // Returns a standard 8-4-4-4-12 formatted UUID
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {

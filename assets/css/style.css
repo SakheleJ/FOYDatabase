@@ -183,6 +183,13 @@ tbody tr.selected {
     background: #e7f1ff;
 }
 
+.presby-btn {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    line-height: 1.4;
+    width: auto;
+}
+
 .color-block {
     width: 20px;
     border-radius: 8px 0 0 8px;
