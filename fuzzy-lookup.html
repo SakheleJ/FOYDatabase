@@ -1,0 +1,2208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fuzzy Lookup — Multi-Column</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; background: #f0efe9; color: #1c1c1a; min-height: 100vh; padding: 2rem 1rem; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    header { margin-bottom: 2rem; }
+    h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.5px; margin-bottom: 4px; }
+    .sub { font-size: 13px; color: #777; }
+    .card { background: #fff; border: 1px solid #e2e1db; border-radius: 14px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; }
+    .card-title { font-size: 11px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 1rem; }
+    .paste-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 700px) { .paste-grid { grid-template-columns: 1fr; } }
+    .paste-block { min-width: 0; }
+    .paste-block label { display: block; font-size: 12px; font-weight: 500; color: #555; margin-bottom: 6px; }
+    textarea { width: 100%; height: 150px; font-family: 'Courier New', monospace; font-size: 11.5px; line-height: 1.6; resize: vertical; border: 1px solid #e2e1db; border-radius: 8px; padding: 8px 10px; background: #fafaf7; color: #1c1c1a; }
+    textarea:focus { outline: none; border-color: #999; }
+    .hint { font-size: 11px; color: #aaa; margin-top: 5px; line-height: 1.5; }
+    input[type=text], input[type=number] { font-size: 12px; padding: 6px 10px; border: 1px solid #e2e1db; border-radius: 7px; background: #fafaf7; color: #1c1c1a; width: 100%; }
+    input[type=text]:focus, input[type=number]:focus { outline: none; border-color: #999; }
+    select { font-size: 12px; padding: 5px 8px; border: 1px solid #e2e1db; border-radius: 7px; background: #fafaf7; color: #1c1c1a; width: 100%; }
+    select:focus { outline: none; border-color: #999; }
+    input[type=range] { width: 100%; accent-color: #1c1c1a; }
+
+    /* ── map grid ── */
+    .map-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
+    .map-row { display: flex; flex-direction: column; gap: 4px; }
+    .field-label { font-size: 11px; font-weight: 600; color: #555; display: flex; align-items: center; gap: 6px; margin-bottom: 2px; flex-wrap: wrap; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+    .field-hint { font-size: 10px; color: #bbb; font-weight: 400; }
+    .col-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .col-pair-label { font-size: 10px; color: #aaa; margin-bottom: 3px; }
+
+    /* ── year config ── */
+    .year-config { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #f0efe9; }
+    .year-config-title { font-size: 11px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px; }
+    .year-rows { display: flex; flex-direction: column; gap: 6px; }
+    .year-row { display: grid; grid-template-columns: 90px 1fr 1fr 60px; gap: 8px; align-items: center; font-size: 12px; }
+    .year-row.header { font-size: 10px; color: #aaa; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+    .add-year-btn { margin-top: 8px; font-size: 12px; color: #555; background: #fafaf7; border: 1px dashed #e2e1db; border-radius: 7px; padding: 5px 12px; cursor: pointer; width: 100%; }
+    .add-year-btn:hover { background: #f0efe9; }
+    .remove-year { font-size: 11px; color: #c0392b; background: none; border: none; cursor: pointer; padding: 2px 4px; }
+
+
+
+    /* ── weights ── */
+    .weight-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+    .weight-row { display: flex; flex-direction: column; gap: 6px; }
+    .wlabel { font-size: 12px; color: #555; display: flex; justify-content: space-between; align-items: center; }
+    .wval { font-size: 12px; font-weight: 600; color: #1c1c1a; }
+    .exclude-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+    .exclude-row input[type=checkbox] { accent-color: #c0392b; width: 13px; height: 13px; cursor: pointer; }
+    .exclude-row label { font-size: 11px; color: #aaa; cursor: pointer; user-select: none; }
+    .weight-row.excluded .wlabel { opacity: 0.4; }
+    .weight-row.excluded input[type=range] { opacity: 0.25; pointer-events: none; }
+
+    /* ── options row ── */
+    .options-row { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #f0efe9; }
+    .opt-group { display: flex; align-items: center; gap: 8px; }
+    .opt-group label { font-size: 13px; color: #555; }
+    .opt-group select { width: auto; }
+    .thresh-val { font-size: 13px; font-weight: 600; min-width: 36px; }
+    .run-btn { background: #1c1c1a; color: #fff; border: none; border-radius: 9px; padding: 9px 24px; font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
+    .run-btn:hover { opacity: 0.75; }
+    .load-btn { margin-top: 12px; background: #fff; color: #1c1c1a; border: 1px solid #e2e1db; border-radius: 9px; padding: 8px 20px; font-size: 13px; font-weight: 500; cursor: pointer; }
+    .load-btn:hover { background: #f5f5f0; }
+    .mode-toggle { display: flex; border: 1px solid #e2e1db; border-radius: 8px; overflow: hidden; }
+    .mode-btn { flex: 1; padding: 6px 14px; font-size: 12px; font-weight: 500; border: none; background: #fafaf7; color: #777; cursor: pointer; white-space: nowrap; }
+    .mode-btn.active { background: #1c1c1a; color: #fff; }
+
+    /* ── results ── */
+    .results-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .results-bar h2 { font-size: 14px; font-weight: 600; }
+    .results-meta { display: flex; align-items: center; gap: 10px; }
+    .count-badge { font-size: 11px; background: #f0efe9; border: 1px solid #e2e1db; border-radius: 99px; padding: 2px 10px; color: #777; }
+    .export-btn { font-size: 12px; color: #555; background: #fff; border: 1px solid #e2e1db; border-radius: 8px; padding: 5px 12px; cursor: pointer; }
+    .export-btn:hover { background: #f5f5f0; }
+    .table-wrap { overflow-x: auto; border: 1px solid #e2e1db; border-radius: 12px; background: #fff; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { background: #fafaf7; padding: 8px 10px; text-align: left; font-size: 10px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #e2e1db; white-space: nowrap; }
+    td { padding: 8px 10px; border-bottom: 1px solid #f2f1ec; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fafaf7; }
+
+    .score-pill { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 99px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .score-high { background: #e6f7f0; color: #0f6e56; }
+    .score-mid  { background: #fef6e4; color: #854f0b; }
+    .score-low  { background: #fdecea; color: #a32d2d; }
+    .fscore { font-size: 10px; padding: 1px 6px; border-radius: 99px; font-weight: 600; border: 1px solid; white-space: nowrap; }
+    .fscore-high { background: #e6f7f0; color: #0f6e56; border-color: #9fe1cb; }
+    .fscore-mid  { background: #fef6e4; color: #854f0b; border-color: #fac775; }
+    .fscore-low  { background: #fdecea; color: #a32d2d; border-color: #f7c1c1; }
+
+    .affil-cell { display: flex; gap: 3px; flex-wrap: wrap; }
+    .affil-badge { font-size: 10px; padding: 1px 5px; border-radius: 4px; font-weight: 600; }
+    .affil-yes  { background: #e6f7f0; color: #0f6e56; }
+    .affil-no   { background: #f5f5f0; color: #aaa; }
+    .affil-diff { background: #fdecea; color: #a32d2d; }
+
+    .override-tag { font-size: 10px; background: #f0f4ff; color: #3b5bdb; border: 1px solid #c5d0e6; border-radius: 4px; padding: 1px 5px; margin-left: 4px; }
+    .presb-source-toggle { display: flex; gap: 0; border: 1px solid #e2e1db; border-radius: 7px; overflow: hidden; margin-bottom: 6px; width: fit-content; }
+    .presb-source-btn { padding: 4px 12px; font-size: 11px; font-weight: 500; border: none; background: #fafaf7; color: #777; cursor: pointer; }
+    .presb-source-btn.active { background: #185FA5; color: #fff; }
+
+    /* ── Result cards ── */
+    .result-cards { display: flex; flex-direction: column; gap: 8px; }
+    .rcard { background: #fff; border: 1px solid #e2e1db; border-radius: 10px; overflow: hidden; transition: border-color .12s, box-shadow .12s; }
+    .rcard.selected { border-color: #1c1c1a; box-shadow: 0 0 0 2px rgba(28,28,26,0.1); }
+    .rcard-no-match { opacity: 0.65; }
+    .rcard-header { display: flex; align-items: center; gap: 10px; padding: 9px 14px; background: #fafaf7; border-bottom: 1px solid #f0efe9; flex-wrap: wrap; }
+    .rcard-check { width: 15px; height: 15px; accent-color: #1c1c1a; cursor: pointer; flex-shrink: 0; margin-right: 2px; }
+    /* ── Bulk action bar ── */
+    .bulk-bar { display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: #1c1c1a; color: #fff; border-radius: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+    .bulk-count { font-size: 12px; font-weight: 600; }
+    .bulk-dec-btn { padding: 4px 12px; font-size: 11px; font-weight: 600; border: none; border-radius: 7px; cursor: pointer; white-space: nowrap; }
+    .bulk-confirm { background: #e6f7f0; color: #0f6e56; }
+    .bulk-new     { background: #dbeafe; color: #1e40af; }
+    .bulk-skip    { background: #f0efe9; color: #777; }
+    .bulk-deselect { font-size: 11px; color: #aaa; background: none; border: 1px solid #444; border-radius: 7px; padding: 4px 10px; cursor: pointer; margin-left: auto; }
+    .sel-all-wrap { display: flex; align-items: center; gap: 5px; }
+    .sel-all-check { width: 14px; height: 14px; accent-color: #1c1c1a; cursor: pointer; }
+    .sel-all-label { font-size: 10px; color: #aaa; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; cursor: pointer; white-space: nowrap; user-select: none; }
+    .rcard-ref { font-size: 11px; color: #aaa; flex: 1; min-width: 80px; }
+    .rcard-body { padding: 8px 14px; display: flex; flex-direction: column; gap: 5px; }
+    .rcard-row { display: grid; grid-template-columns: 110px 1fr 18px 1fr 54px; gap: 8px; align-items: center; font-size: 12px; min-height: 24px; }
+    .rcard-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rcard-val { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #1c1c1a; }
+    .rcard-val-b { color: #999; }
+    .rcard-val-b.diff { color: #c0392b; font-weight: 600; }
+    .rcard-arr { text-align: center; color: #ddd; font-size: 11px; }
+    .rcard-years { display: flex; gap: 3px; flex-wrap: wrap; }
+    .rcard-nomatch { padding: 8px 14px 10px; font-size: 12px; display: flex; gap: 16px; flex-wrap: wrap; }
+    .rcard-nm-field { display: flex; flex-direction: column; gap: 2px; }
+    .rcard-nm-field > span:first-child { font-size: 9px; font-weight: 700; color: #ccc; text-transform: uppercase; letter-spacing: 0.05em; }
+
+    .empty { text-align: center; padding: 3rem; color: #bbb; font-size: 13px; }
+    .warn { background: #fffbea; border: 1px solid #fde68a; border-radius: 8px; padding: 8px 12px; font-size: 12px; color: #92400e; margin-top: 8px; }
+    .info-box { background: #f0f7ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 8px 12px; font-size: 12px; color: #1e40af; margin-top: 10px; }
+    .divider { border: none; border-top: 1px solid #f0efe9; margin: 1rem 0; }
+
+    /* ── DB integration ── */
+    .load-db-btn { margin-top: 8px; background: #f0f7ff; color: #1e40af; border: 1px solid #bfdbfe; border-radius: 9px; padding: 8px 18px; font-size: 12px; font-weight: 500; cursor: pointer; }
+    .load-db-btn:hover { background: #dbeafe; }
+    .import-config { margin-top: 1rem; padding: 1rem; background: #f0f7ff; border: 1px solid #bfdbfe; border-radius: 10px; }
+    .import-config-title { font-size: 11px; font-weight: 600; color: #1e40af; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 12px; }
+    .import-config-row { display: grid; grid-template-columns: 1fr 1fr 100px; gap: 12px; align-items: end; }
+    @media (max-width: 600px) { .import-config-row { grid-template-columns: 1fr; } }
+    .commit-btn { background: #0f6e56; color: #fff; border: none; border-radius: 9px; padding: 9px 22px; font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
+    .commit-btn:hover { opacity: 0.8; }
+    .decision-sel { font-size: 11px; padding: 3px 7px; border: 1px solid #e2e1db; border-radius: 6px; cursor: pointer; transition: background 0.1s; min-width: 130px; }
+
+    /* ── Result filters ── */
+    .results-sticky-bar { position:sticky; top:0; z-index:50; background:#f5f5f0; padding:6px 0 2px; margin-bottom:4px; }
+    .filter-bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding:8px 12px; background:#fafaf7; border:1px solid #e2e1db; border-radius:10px; margin-bottom:10px; }
+    .filter-group { display:flex; align-items:center; gap:5px; }
+    .filter-label { font-size:10px; color:#aaa; font-weight:700; text-transform:uppercase; letter-spacing:.05em; white-space:nowrap; }
+    .fchip-group { display:flex; border:1px solid #e2e1db; border-radius:7px; overflow:hidden; }
+    .fchip { padding:3px 10px; font-size:11px; font-weight:500; border:none; border-right:1px solid #e2e1db; background:#fff; color:#777; cursor:pointer; white-space:nowrap; }
+    .fchip:last-child { border-right:none; }
+    .fchip:hover { background:#f5f5f0; }
+    .fchip.active { background:#1c1c1a; color:#fff; }
+    .rcard.rc-hidden { display:none; }
+    /* ── Commit group ── */
+    .commit-group { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+    .cmt-confirm { background:#0f6e56; color:#fff; border:none; border-radius:8px; padding:6px 14px; font-size:12px; font-weight:600; cursor:pointer; }
+    .cmt-new     { background:#1e40af; color:#fff; border:none; border-radius:8px; padding:6px 14px; font-size:12px; font-weight:600; cursor:pointer; }
+    .cmt-all     { background:#1c1c1a; color:#fff; border:none; border-radius:8px; padding:6px 14px; font-size:12px; font-weight:600; cursor:pointer; }
+    .cmt-confirm:disabled, .cmt-new:disabled, .cmt-all:disabled { opacity:.35; cursor:not-allowed; }
+    .cmt-pending { background:#fff; color:#555; border:1px solid #e2e1db; border-radius:8px; padding:6px 14px; font-size:12px; font-weight:600; cursor:pointer; margin-left:auto; }
+    .cmt-pending:hover { background:#f5f5f0; }
+    .filter-field-sel { font-size:11px; padding:3px 6px; border:1px solid #e2e1db; border-radius:7px; background:#fafaf7; color:#1c1c1a; width:auto; }
+    /* ── Congregation mapping new badge ── */
+    .cong-new-badge { display:inline-flex; align-items:center; gap:4px; font-size:10px; font-weight:700; background:#e6f7f0; color:#0f6e56; border:1px solid #9fe1cb; border-radius:99px; padding:2px 8px; white-space:nowrap; }
+    .cong-new-badge.pending { background:#f0f7ff; color:#1e40af; border-color:#bfdbfe; }
+    /* ── Toast ── */
+    .commit-toast { position:fixed; bottom:24px; right:24px; background:#1c1c1a; color:#fff; border-radius:10px; padding:12px 18px; font-size:13px; font-weight:500; z-index:9999; opacity:0; transition:opacity .3s; pointer-events:none; max-width:320px; line-height:1.6; white-space:pre-line; }
+    .commit-toast.show { opacity:1; }
+
+    /* ── Override panel ── */
+    .change-match-btn { font-size:11px; padding:2px 8px; border:1px solid #e2e1db; border-radius:6px; background:#fafaf7; color:#555; cursor:pointer; white-space:nowrap; margin-left:4px; }
+    .change-match-btn:hover { background:#f0efe9; }
+    .change-match-btn.active { background:#dbeafe; color:#1e40af; border-color:#bfdbfe; }
+    .override-panel { border-top:1px solid #e2e1db; padding:10px 14px; background:#fafaf7; }
+    .ovp-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+    .ovp-title { font-size:11px; font-weight:700; color:#555; text-transform:uppercase; letter-spacing:.05em; }
+    .ovp-close { font-size:12px; background:none; border:none; cursor:pointer; color:#aaa; padding:0 2px; }
+    .ovp-close:hover { color:#1c1c1a; }
+    .ovp-search { width:100%; font-size:12px; padding:5px 9px; border:1px solid #e2e1db; border-radius:7px; background:#fff; margin-bottom:7px; box-sizing:border-box; }
+    .ovp-list { max-height:200px; overflow-y:auto; display:flex; flex-direction:column; gap:1px; }
+    .ovp-item { padding:5px 8px; border-radius:6px; cursor:pointer; border:1px solid transparent; }
+    .ovp-item:hover { background:#fff; border-color:#e2e1db; }
+    .ovp-item.ovp-current { background:#e6f7f0; border-color:#9fe1cb; }
+    .ovp-item-name { font-size:12px; font-weight:600; color:#1c1c1a; }
+    .ovp-item-meta { font-size:10px; color:#aaa; margin-top:1px; }
+    .ovp-override-tag { font-size:10px; background:#dbeafe; color:#1e40af; border:1px solid #bfdbfe; border-radius:4px; padding:1px 5px; margin-left:4px; }
+
+    /* ── Excel paste zone ── */
+    .paste-zone { border: 2px dashed #e2e1db; border-radius: 8px; min-height: 70px; padding: 18px 12px; cursor: text; text-align: center; color: #bbb; font-size: 13px; outline: none; transition: border-color 0.15s, background 0.15s; user-select: none; }
+    .paste-zone:focus { border-color: #999; background: #fafaf8; color: #777; }
+    .paste-zone.has-data { border-color: #9fe1cb; background: #f0fdf8; color: #0f6e56; font-weight: 600; border-style: solid; }
+    .paste-zone-actions { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+    .paste-preview-wrap { overflow-x: auto; border: 1px solid #e2e1db; border-radius: 8px; background: #fff; margin-top: 8px; max-height: 190px; overflow-y: auto; }
+    .paste-preview-wrap table { font-size: 11px; }
+    .paste-preview-wrap th { background: #fafaf7; font-size: 10px; color: #999; text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* ── Column filter dropdowns ── */
+.col-filter-btn { display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border:none;border-radius:3px;background:none;cursor:pointer;color:#ccc;font-size:8px;padding:0;margin-left:3px;vertical-align:middle;flex-shrink:0; }
+.col-filter-btn:hover { background:#e2e1db;color:#555; }
+.col-filter-btn.filtered { background:#dbeafe;color:#1e40af; }
+.col-filter-panel { position:fixed;background:#fff;border:1px solid #e2e1db;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.13);padding:10px;z-index:10000;width:210px;font-size:12px; }
+.cfp-search { width:100%;margin-bottom:7px;padding:5px 8px;border:1px solid #e2e1db;border-radius:7px;font-size:11px;box-sizing:border-box; }
+.cfp-actions { display:flex;gap:6px;margin-bottom:7px; }
+.cfp-actions button { flex:1;font-size:11px;padding:3px 6px;border:1px solid #e2e1db;border-radius:6px;cursor:pointer;background:#fafaf7; }
+.cfp-list { max-height:170px;overflow-y:auto;display:flex;flex-direction:column;gap:1px; }
+.cfp-item { display:flex;align-items:center;gap:6px;padding:3px 4px;border-radius:5px;cursor:pointer;user-select:none; }
+.cfp-item:hover { background:#f5f5f0; }
+.cfp-item input { accent-color:#1c1c1a;flex-shrink:0;cursor:pointer; }
+.cfp-item label { flex:1;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px; }
+.cfp-footer { display:flex;gap:6px;margin-top:8px;border-top:1px solid #f0efe9;padding-top:7px; }
+.cfp-apply { flex:1;background:#1c1c1a;color:#fff;border:none;border-radius:7px;padding:5px;font-size:11px;font-weight:600;cursor:pointer; }
+.cfp-cancel { background:#fafaf7;border:1px solid #e2e1db;border-radius:7px;padding:5px 10px;font-size:11px;cursor:pointer; }
+.ss-preview-wrap { overflow-x:auto;border:1px solid #e2e1db;border-radius:8px;background:#fff;margin-top:8px;max-height:200px;overflow-y:auto; }
+.ss-preview-wrap table { font-size:11px;width:100%;border-collapse:collapse; }
+.ss-preview-wrap th { background:#fafaf7;padding:6px 8px;text-align:left;font-size:10px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid #e2e1db;white-space:nowrap;position:sticky;top:0; }
+.ss-preview-wrap th .th-inner { display:flex;align-items:center;gap:2px; }
+.ss-preview-wrap td { padding:4px 8px;border-bottom:1px solid #f2f1ec;white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis;font-size:11px; }
+.ss-preview-wrap tr:last-child td { border-bottom:none; }
+.ss-row-count { font-size:11px;color:#aaa;margin-top:4px; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Fuzzy Lookup — Multi-Column</h1>
+    <p class="sub">Match congregation records across Congregation, Presbytery, Title, Name/Surname, DOB, Gender and affiliation years.</p>
+  </header>
+
+  <!-- Step 1: Paste data -->
+  <div class="card">
+    <div class="card-title">Step 1 — Paste your data (CSV with headers)</div>
+    <div class="paste-grid">
+      <div class="paste-block">
+        <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+          <span>Source table — records to find matches for</span>
+          <div class="mode-toggle" style="margin:0;">
+            <button class="mode-btn active" id="ta-csv-btn" onclick="setTableAMode('csv')">Paste CSV</button>
+            <button class="mode-btn" id="ta-sheet-btn" onclick="setTableAMode('sheet')">Spreadsheet</button>
+          </div>
+        </label>
+        <textarea id="tableA" placeholder="#,Congregation,Presbytery,Title,Surname,Name,DOB,Gender,2023,2024,2025,2026&#10;1,Betel,Northern,Sis.,Nayo,Zandile,1990-03-15,F,Yes,Yes,Yes,No&#10;2,Bethal,Northern,Sis.,Nayo,Zintle,1993-07-22,F,No,Yes,Yes,Yes"></textarea>
+        <div id="tableA-sheet" style="display:none;">
+          <div id="tableA-paste-zone" class="paste-zone" tabindex="0">
+            Click here, then press <strong>Ctrl+V</strong> to paste from Excel
+          </div>
+          <div class="paste-zone-actions">
+            <button class="load-db-btn" style="margin-top:0;" onclick="pasteFromClipboard()">Paste from clipboard</button>
+            <button class="load-db-btn" style="margin-top:0;display:none;" id="clearPasteBtn" onclick="clearPasteData()">Clear</button>
+          </div>
+          <div id="tableA-paste-preview"></div>
+        </div>
+        <p class="hint">First row must be headers. In <strong>Spreadsheet</strong> mode, copy a range from Excel and paste directly with Ctrl+V.</p>
+      </div>
+      <div class="paste-block">
+        <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+          <span>Lookup table — master / reference list</span>
+          <div class="mode-toggle" style="margin:0;">
+            <button class="mode-btn active" id="tb-csv-btn" onclick="setTableBMode('csv')">Paste CSV</button>
+            <button class="mode-btn" id="tb-sheet-btn" onclick="setTableBMode('sheet')">Spreadsheet</button>
+          </div>
+        </label>
+        <textarea id="tableB" placeholder="#,Congregation,Presbytery,Title,Surname,Name,DOB,Gender,2023,2024,2025,2026&#10;1,Bethel,Northern,Sis.,Nayo,Zandile,1990-03-15,F,Yes,Yes,Yes,No&#10;2,Bethel,Northern,Sis.,Nayo,Zintle,1993-07-22,F,No,Yes,Yes,Yes"></textarea>
+        <div id="tableB-sheet" style="display:none;">
+          <div id="tableB-paste-zone" class="paste-zone" tabindex="0">
+            Click here, then press <strong>Ctrl+V</strong> to paste from Excel
+          </div>
+          <div class="paste-zone-actions">
+            <button class="load-db-btn" style="margin-top:0;" onclick="pasteTableBFromClipboard()">Paste from clipboard</button>
+            <button class="load-db-btn" style="margin-top:0;display:none;" id="clearPasteBBtn" onclick="clearTableBPaste()">Clear</button>
+          </div>
+          <div id="tableB-paste-preview"></div>
+        </div>
+        <p class="hint">Paste a CSV manually, or click the button below to load members straight from the FOY database.</p>
+        <button class="load-db-btn" onclick="loadFromDB()">Load members from FOY database →</button>
+      </div>
+    </div>
+    <div id="parse-warn"></div>
+
+    <!-- Import Target — shown after "Load from DB" -->
+    <div id="import-config" class="import-config" style="display:none;">
+      <div class="import-config-title">Import Target</div>
+      <div class="import-config-row" style="grid-template-columns:1fr 110px;">
+        <div>
+          <div class="col-pair-label" style="margin-bottom:4px;">Presbytery</div>
+          <select id="importPresbytery" onchange="refreshCongMapping()"></select>
+        </div>
+        <div>
+          <div class="col-pair-label" style="margin-bottom:4px;">Period (year)</div>
+          <input type="number" id="importYear" min="2000" max="2050" style="width:100%;">
+        </div>
+      </div>
+      <p class="hint" style="margin-top:8px;">Congregations are mapped per-row after the lookup runs. Make sure your import list has a <strong>Congregation</strong> column and map it in Step 2.</p>
+    </div>
+
+    <button class="load-btn" onclick="loadColumns()">Load columns →</button>
+  </div>
+
+  <!-- Step 2: Column mapping -->
+  <div class="card" id="map-section" style="display:none;">
+    <div class="card-title">Step 2 — Map columns to match fields</div>
+    <div class="map-grid" id="map-grid"></div>
+
+    <hr class="divider">
+
+    <!-- Year mapping -->
+    <div class="year-config">
+      <div class="year-config-title">Affiliation period columns</div>
+      <p class="hint" style="margin-bottom:10px;">Map each period to the corresponding column in both tables. Cells containing "yes" / "y" / "1" count as affiliated; blank, "no" or "n" count as not affiliated.</p>
+      <div class="year-rows">
+        <div class="year-row header">
+          <span>Year label</span><span>Table A column</span><span>Table B column</span><span></span>
+        </div>
+        <div id="year-rows"></div>
+      </div>
+      <button class="add-year-btn" onclick="addYearRow()">+ Add period</button>
+    </div>
+
+    </div>
+  </div>
+
+  <!-- Step 3: Weights & options -->
+  <div class="card" id="weight-section" style="display:none;">
+    <div class="card-title">Step 3 — Field weights &amp; matching options</div>
+    <div class="weight-grid" id="weight-grid"></div>
+    <div class="options-row">
+      <div class="opt-group">
+        <label>Algorithm</label>
+        <select id="algo">
+          <option value="jaro">Jaro-Winkler (best for names)</option>
+          <option value="dice">Dice coefficient</option>
+          <option value="levenshtein">Levenshtein ratio</option>
+        </select>
+      </div>
+      <div class="opt-group">
+        <label>Min score</label>
+        <input type="range" id="thresh" min="0" max="100" value="45" step="5" style="width:90px;">
+        <span class="thresh-val" id="thresh-val">45%</span>
+      </div>
+      <div class="opt-group">
+        <label>Match mode</label>
+        <div class="mode-toggle">
+          <button class="mode-btn" id="btn-many" onclick="setMode('many')">Allow reuse</button>
+          <button class="mode-btn active" id="btn-one" onclick="setMode('one')">One-to-one</button>
+        </div>
+      </div>
+      <button class="run-btn" style="margin-left:auto;" onclick="runLookup()">Run lookup</button>
+    </div>
+    <div class="info-box" id="mode-info">
+      <strong>One-to-one mode:</strong> Each Table B record can only be claimed once — similar people like siblings sharing a surname each get their own unique match.
+    </div>
+  </div>
+
+  <!-- Congregation Mapping (DB mode only) -->
+  <div id="cong-map-section" style="display:none;margin-top:1.5rem;">
+    <div class="results-bar">
+      <h2>Congregation Mapping</h2>
+      <div class="results-meta">
+        <span class="count-badge" id="cong-map-count"></span>
+      </div>
+    </div>
+    <div class="card">
+      <p class="hint" style="margin-bottom:1rem;">Map each congregation name from your import list to the correct congregation in the FOY database. Matches ≥ 85% were auto-suggested — review lower-confidence ones before committing.</p>
+      <div id="cong-map-header" style="display:grid;grid-template-columns:1fr 28px 1fr 80px;gap:12px;align-items:center;margin-bottom:8px;font-size:10px;font-weight:600;color:#999;text-transform:uppercase;letter-spacing:0.05em;">
+        <span>Import name</span><span></span><span>Database congregation</span><span>Confidence</span>
+      </div>
+      <div id="cong-map-rows"></div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="results-section" style="display:none;">
+    <div class="results-bar">
+      <h2>Results</h2>
+      <div class="results-meta">
+        <span class="count-badge" id="res-count"></span>
+        <button class="export-btn" onclick="exportCSV()">Export CSV</button>
+      </div>
+    </div>
+
+    <!-- Sticky wrapper: filter bar + commit buttons float while scrolling results -->
+    <div class="results-sticky-bar" id="results-sticky-bar">
+
+    <!-- Filter bar (shown after lookup runs) -->
+    <div class="filter-bar" id="result-filter-bar" style="display:none;">
+      <div class="sel-all-wrap" id="sel-all-wrap" style="display:none;">
+        <input type="checkbox" class="sel-all-check" id="sel-all-check" onchange="selectAllVisible(this)" title="Select / deselect all visible">
+        <label class="sel-all-label" for="sel-all-check">Select all</label>
+        <span style="width:1px;height:14px;background:#e2e1db;display:inline-block;margin:0 4px;"></span>
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">Show</span>
+        <div class="fchip-group">
+          <button class="fchip active" data-fg="match" onclick="setFilter('match','all',this)">All</button>
+          <button class="fchip" data-fg="match" onclick="setFilter('match','matched',this)">Matched</button>
+          <button class="fchip" data-fg="match" onclick="setFilter('match','nomatch',this)">No Match</button>
+        </div>
+      </div>
+      <div class="filter-group" id="filter-dec-group" style="display:none;">
+        <span class="filter-label">Decision</span>
+        <div class="fchip-group">
+          <button class="fchip active" data-fg="dec" onclick="setFilter('dec','all',this)">All</button>
+          <button class="fchip" data-fg="dec" onclick="setFilter('dec','confirm',this)">Confirm</button>
+          <button class="fchip" data-fg="dec" onclick="setFilter('dec','new',this)">New</button>
+          <button class="fchip" data-fg="dec" onclick="setFilter('dec','skip',this)">Skip</button>
+        </div>
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">Score</span>
+        <div class="fchip-group">
+          <button class="fchip active" data-fg="score" onclick="setFilter('score','all',this)">All</button>
+          <button class="fchip" data-fg="score" onclick="setFilter('score','vhigh',this)">≥90%</button>
+          <button class="fchip" data-fg="score" onclick="setFilter('score','high',this)">75–89%</button>
+          <button class="fchip" data-fg="score" onclick="setFilter('score','mid',this)">50–74%</button>
+          <button class="fchip" data-fg="score" onclick="setFilter('score','low',this)">&lt;50%</button>
+        </div>
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">Search</span>
+        <select id="filter-search-col" class="filter-field-sel" onchange="setSearchColFilter()" style="width:130px;">
+          <option value="">Any column</option>
+        </select>
+        <input type="text" id="filter-search-text" placeholder="Filter rows…" oninput="setSearchTextFilter()" style="width:150px;padding:4px 8px;font-size:12px;border:1px solid #e2e1db;border-radius:7px;background:#fafaf7;">
+        <button onclick="clearSearchFilter()" title="Clear search" style="font-size:11px;padding:3px 8px;border:1px solid #e2e1db;border-radius:7px;background:#fafaf7;cursor:pointer;color:#777;">✕</button>
+      </div>
+      <div class="filter-group" id="filter-field-group" style="display:none;">
+        <span class="filter-label">Column</span>
+        <select id="filter-field-key" class="filter-field-sel" onchange="setFieldKeyFilter()">
+          <option value="">Any field</option>
+        </select>
+        <div class="fchip-group">
+          <button class="fchip active" data-fg="fieldScore" onclick="setFilter('fieldScore','all',this)">All</button>
+          <button class="fchip" data-fg="fieldScore" onclick="setFilter('fieldScore','vhigh',this)">≥90%</button>
+          <button class="fchip" data-fg="fieldScore" onclick="setFilter('fieldScore','high',this)">75–89%</button>
+          <button class="fchip" data-fg="fieldScore" onclick="setFilter('fieldScore','mid',this)">50–74%</button>
+          <button class="fchip" data-fg="fieldScore" onclick="setFilter('fieldScore','low',this)">&lt;50%</button>
+        </div>
+      </div>
+      <div class="filter-group" style="margin-left:auto;">
+        <span class="filter-label">Sort</span>
+        <select class="filter-field-sel" id="sort-order" onchange="setSort(this.value)" style="width:auto;">
+          <option value="original">Original order</option>
+          <option value="score-asc">Score ↑ (low → high)</option>
+          <option value="score-desc">Score ↓ (high → low)</option>
+        </select>
+      </div>
+      <span id="filter-visible-count" class="count-badge"></span>
+    </div>
+
+    <!-- Commit group (db mode only) -->
+    <div class="commit-group" id="commit-group" style="display:none;">
+      <button class="cmt-confirm" id="commitConfirmBtn" onclick="commitImport('confirm')" disabled>Commit Confirmed (0)</button>
+      <button class="cmt-new"     id="commitNewBtn"     onclick="commitImport('new')"     disabled>Commit New (0)</button>
+      <button class="cmt-all"     id="commitAllBtn"     onclick="commitImport('all')"     disabled>Commit All (0)</button>
+      <button class="cmt-pending" id="copyPendingBtn"   onclick="copyUncommitted()"       style="display:none;">Copy Pending (0)</button>
+    </div>
+
+    </div><!-- /results-sticky-bar -->
+
+    <!-- Bulk action bar (db mode, shown when ≥1 card selected) -->
+    <div class="bulk-bar" id="bulk-bar" style="display:none;">
+      <span class="bulk-count" id="bulk-count">0 selected</span>
+      <button class="bulk-dec-btn bulk-confirm" onclick="bulkSetDecision('confirm')">Set Confirm</button>
+      <button class="bulk-dec-btn bulk-new"     onclick="bulkSetDecision('new')">Set New</button>
+      <button class="bulk-dec-btn bulk-skip"    onclick="bulkSetDecision('skip')">Set Skip</button>
+      <button class="bulk-deselect"             onclick="clearSelection()">Deselect All</button>
+    </div>
+
+    <div id="result-cards" class="result-cards">
+      <div class="empty">Run lookup to see results</div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast notification -->
+<div class="commit-toast" id="commitToast"></div>
+
+<!-- Shared sync layer — needed so commitImport can push records to Google Sheet -->
+<script src="assets/js/utils.js"></script>
+<script src="assets/js/db.js"></script>
+<script src="assets/js/sheet.js"></script>
+<script src="assets/js/audit.js"></script>
+
+<script>
+const $ = id => document.getElementById(id);
+let matchMode = 'one';
+let tA = null, tB = null, lastResults = [];
+let _tAAllRows = [], _tAHeaders = [], _tAFilters = {};
+let _tBAllRows = [], _tBHeaders = [], _tBFilters = {};
+let _tbMode = 'csv';
+let _openColFilterState = null;
+let _dbMode = false, _dbRaw = null;
+let _lastRunConfig = null;
+
+// ── Mode toggle ───────────────────────────────────────────────────────────────
+function setMode(m) {
+  matchMode = m;
+  $('btn-one').classList.toggle('active', m === 'one');
+  $('btn-many').classList.toggle('active', m === 'many');
+  $('mode-info').innerHTML = m === 'one'
+    ? '<strong>One-to-one mode:</strong> Each Table B record can only be claimed once — similar people like siblings sharing a surname each get their own unique match.'
+    : '<strong>Allow reuse mode:</strong> The best-scoring Table B row is returned for each Table A row, even if already matched to someone else.';
+}
+
+// ── CSV parser ────────────────────────────────────────────────────────────────
+function parseCSV(raw) {
+  const lines = raw.trim().split('\n').filter(l => l.trim());
+  if (!lines.length) return { headers: [], rows: [] };
+  function parseLine(line) {
+    const cols = []; let cur = '', inQ = false;
+    for (const c of line) {
+      if (c === '"') { inQ = !inQ; continue; }
+      if (c === ',' && !inQ) { cols.push(cur.trim()); cur = ''; continue; }
+      cur += c;
+    }
+    cols.push(cur.trim()); return cols;
+  }
+  return { headers: parseLine(lines[0]), rows: lines.slice(1).map(parseLine) };
+}
+
+// ── Affiliation normaliser ────────────────────────────────────────────────────
+function isAffiliated(val) {
+  const v = (val || '').toLowerCase().trim();
+  return v === 'yes' || v === 'y' || v === '1' || v === 'true';
+}
+
+// ── Similarity algorithms ─────────────────────────────────────────────────────
+function jaro(s1, s2) {
+  if (s1 === s2) return 1;
+  const l1 = s1.length, l2 = s2.length;
+  if (!l1 || !l2) return 0;
+  const dist = Math.max(0, Math.floor(Math.max(l1, l2) / 2) - 1);
+  const m1 = new Array(l1).fill(false), m2 = new Array(l2).fill(false);
+  let matches = 0, t = 0;
+  for (let i = 0; i < l1; i++) {
+    const lo = Math.max(0, i - dist), hi = Math.min(i + dist + 1, l2);
+    for (let j = lo; j < hi; j++) { if (m2[j] || s1[i] !== s2[j]) continue; m1[i] = m2[j] = true; matches++; break; }
+  }
+  if (!matches) return 0;
+  let k = 0;
+  for (let i = 0; i < l1; i++) { if (!m1[i]) continue; while (!m2[k]) k++; if (s1[i] !== s2[k]) t++; k++; }
+  return (matches / l1 + matches / l2 + (matches - t / 2) / matches) / 3;
+}
+function jaroWinkler(a, b) { const jd = jaro(a, b); let p = 0; for (let i = 0; i < Math.min(4, a.length, b.length); i++) { if (a[i] === b[i]) p++; else break; } return jd + p * 0.1 * (1 - jd); }
+function dice(a, b) { if (a === b) return 1; if (a.length < 2 || b.length < 2) return 0; const bg = new Map(); for (let i = 0; i < a.length - 1; i++) { const s = a.slice(i, i+2); bg.set(s, (bg.get(s)||0)+1); } let inter = 0; for (let i = 0; i < b.length - 1; i++) { const s = b.slice(i, i+2); if (bg.get(s) > 0) { inter++; bg.set(s, bg.get(s)-1); } } return (2*inter)/(a.length+b.length-2); }
+function levenshtein(a, b) { const m = a.length, n = b.length; const dp = Array.from({length:m+1},(_,i)=>Array.from({length:n+1},(_,j)=>i?(j?0:i):j)); for (let i=1;i<=m;i++) for (let j=1;j<=n;j++) dp[i][j]=a[i-1]===b[j-1]?dp[i-1][j-1]:1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]); return 1-dp[m][n]/Math.max(m,n); }
+function sim(a, b, algo) { a=(a||'').toLowerCase().trim(); b=(b||'').toLowerCase().trim(); if(!a&&!b)return 1; if(!a||!b)return 0; if(algo==='jaro')return jaroWinkler(a,b); if(algo==='dice')return dice(a,b); return levenshtein(a,b); }
+
+// ── Field config ──────────────────────────────────────────────────────────────
+const CORE_FIELDS = [
+  { key:'congregation', label:'Congregation', color:'#3B6D11', defaultW:15, hint:'Fuzzy — handles misspellings' },
+  { key:'presbytery',   label:'Presbytery',   color:'#185FA5', defaultW:10, hint:'Exact match' },
+  { key:'title',        label:'Title',        color:'#6741d9', defaultW:5,  hint:'Sis./Bro./Mr/Mrs' },
+  { key:'name',         label:'Name + Surname',color:'#993556',defaultW:30, hint:'Detects name/surname swaps' },
+  { key:'dob',          label:'DOB',           color:'#854F0B', defaultW:20, hint:'Normalises date formats' },
+  { key:'gender',       label:'Gender',        color:'#0f6e56', defaultW:5,  hint:'M/F/Male/Female' },
+  { key:'years',        label:'Affiliation period', color:'#c0392b', defaultW:15, hint:'Yes/No per period scored' },
+];
+
+const AUTO_KEYWORDS = {
+  congregation: ['congregation','cong','church','ward','assembly'],
+  presbytery:   ['presbytery','presb','district','region','pres'],
+  title:        ['title','salut','prefix','honorific'],
+  name:         ['name','first','given','forename'],
+  surname:      ['surname','last','family','second'],
+  dob:          ['dob','birth','born','date','bday'],
+  gender:       ['gender','sex','m/f','male'],
+};
+
+function autoDetect(headers, keywords, exclude = []) {
+  const h = headers.map(x => x.toLowerCase());
+  for (const kw of keywords) {
+    const i = h.findIndex(x => x.includes(kw) && !exclude.some(ex => x.includes(ex)));
+    if (i >= 0) return i;
+  }
+  return -1;
+}
+
+// ── Year rows ─────────────────────────────────────────────────────────────────
+let yearRowCount = 0;
+function addYearRow(label, colAidx, colBidx) {
+  const id = yearRowCount++;
+  const div = document.createElement('div');
+  div.id = `yr_${id}`;
+  div.className = 'year-row';
+  const optsA = colOptions(tA.headers, colAidx !== undefined ? colAidx : -1);
+  const optsB = colOptions(tB.headers, colBidx !== undefined ? colBidx : -1);
+  div.innerHTML = `
+    <input type="text" id="yrLabel_${id}" value="${label||''}" placeholder="e.g. 2023" style="font-size:12px;">
+    <select id="yrA_${id}">${optsA}</select>
+    <select id="yrB_${id}">${optsB}</select>
+    <button class="remove-year" onclick="removeYearRow(${id})">✕</button>`;
+  $('year-rows').appendChild(div);
+}
+function removeYearRow(id) { const el = $(`yr_${id}`); if (el) el.remove(); }
+
+function getYearRows() {
+  return Array.from($('year-rows').children).map(div => {
+    const id = div.id.replace('yr_', '');
+    return {
+      label: $(`yrLabel_${id}`).value.trim(),
+      colA:  $(`yrA_${id}`).value,
+      colB:  $(`yrB_${id}`).value,
+    };
+  }).filter(r => r.label);
+}
+
+
+// ── Step 1: Load ──────────────────────────────────────────────────────────────
+function loadColumns() {
+  // In sheet mode use the raw pasted rows directly — avoids CSV round-trip that
+  // can cause whitespace mismatches and break column filter comparisons.
+  if (_tAAllRows.length) {
+    tA = { headers: _tAHeaders, rows: applyColFilters(_tAAllRows, _tAFilters) };
+  } else {
+    tA = parseCSV(getTableACSV());
+    if (Object.keys(_tAFilters).length) tA = { ...tA, rows: applyColFilters(tA.rows, _tAFilters) };
+  }
+  if (_tBAllRows.length) {
+    tB = { headers: _tBHeaders, rows: applyColFilters(_tBAllRows, _tBFilters) };
+  } else {
+    tB = parseCSV($('tableB').value);
+    if (Object.keys(_tBFilters).length) tB = { ...tB, rows: applyColFilters(tB.rows, _tBFilters) };
+  }
+  const warn = $('parse-warn');
+  warn.innerHTML = '';
+  if (!tA.headers.length || !tB.headers.length) { warn.innerHTML = '<div class="warn">Could not detect headers. Ensure your CSV has a header row on the first line.</div>'; return; }
+  if (!tA.rows.length || !tB.rows.length) { warn.innerHTML = '<div class="warn">One table has no data rows.</div>'; return; }
+  buildMapGrid();
+  buildWeightGrid();
+  autoDetectYears();
+  $('map-section').style.display = '';
+  $('weight-section').style.display = '';
+  $('map-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function colOptions(headers, selectedIdx) {
+  let o = '<option value="">— skip —</option>';
+  headers.forEach((h, i) => { o += `<option value="${i}"${i === selectedIdx ? ' selected' : ''}>${h || 'Col ' + (i+1)}</option>`; });
+  return o;
+}
+
+function buildMapGrid() {
+  const grid = $('map-grid');
+  grid.innerHTML = '';
+  CORE_FIELDS.filter(f => f.key !== 'years').forEach(f => {
+    const div = document.createElement('div');
+    div.className = 'map-row';
+    if (f.key === 'name') {
+      const aiNameA = autoDetect(tA.headers, AUTO_KEYWORDS.name, ['surname','last','family']);
+      const aiSurnA = autoDetect(tA.headers, AUTO_KEYWORDS.surname);
+      const aiNameB = autoDetect(tB.headers, AUTO_KEYWORDS.name, ['surname','last','family']);
+      const aiSurnB = autoDetect(tB.headers, AUTO_KEYWORDS.surname);
+      div.innerHTML = `
+        <div class="field-label"><span class="dot" style="background:${f.color}"></span>${f.label} <span class="field-hint">${f.hint}</span></div>
+        <div class="col-pair"><div><div class="col-pair-label">Name — Table A</div><select id="mapA_name">${colOptions(tA.headers,aiNameA)}</select></div><div><div class="col-pair-label">Name — Table B</div><select id="mapB_name">${colOptions(tB.headers,aiNameB)}</select></div></div>
+        <div class="col-pair" style="margin-top:6px;"><div><div class="col-pair-label">Surname — Table A</div><select id="mapA_surname">${colOptions(tA.headers,aiSurnA)}</select></div><div><div class="col-pair-label">Surname — Table B</div><select id="mapB_surname">${colOptions(tB.headers,aiSurnB)}</select></div></div>`;
+    } else if (f.key === 'presbytery') {
+      const aiA = autoDetect(tA.headers, AUTO_KEYWORDS.presbytery);
+      const aiB = autoDetect(tB.headers, AUTO_KEYWORDS.presbytery);
+      div.innerHTML = `
+        <div class="field-label"><span class="dot" style="background:${f.color}"></span>${f.label} <span class="field-hint">${f.hint}</span></div>
+        <div class="col-pair-label" style="margin-top:2px;">Table A source</div>
+        <div class="presb-source-toggle">
+          <button class="presb-source-btn active" id="presb-btn-col" onclick="setPresbMode('col')">From column</button>
+          <button class="presb-source-btn" id="presb-btn-manual" onclick="setPresbMode('manual')">Manual value</button>
+        </div>
+        <div id="presb-col-input">
+          <select id="mapA_presbytery">${colOptions(tA.headers, aiA)}</select>
+          <p class="hint" style="margin-top:4px;">Pick the Presbytery column from Table A. This value is used for every row.</p>
+        </div>
+        <div id="presb-manual-input" style="display:none;">
+          <input type="text" id="mapA_presbytery_manual" placeholder="Type presbytery name — applied to all source rows">
+          <p class="hint" style="margin-top:4px;">This single value is used instead of any column for the entire source table.</p>
+        </div>
+        <div style="margin-top:8px;"><div class="col-pair-label">Table B</div><select id="mapB_presbytery">${colOptions(tB.headers, aiB)}</select></div>`;
+    } else {
+      const aiA = autoDetect(tA.headers, AUTO_KEYWORDS[f.key] || [f.key]);
+      const aiB = autoDetect(tB.headers, AUTO_KEYWORDS[f.key] || [f.key]);
+      div.innerHTML = `
+        <div class="field-label"><span class="dot" style="background:${f.color}"></span>${f.label} <span class="field-hint">${f.hint}</span></div>
+        <div class="col-pair"><div><div class="col-pair-label">Table A</div><select id="mapA_${f.key}">${colOptions(tA.headers,aiA)}</select></div><div><div class="col-pair-label">Table B</div><select id="mapB_${f.key}">${colOptions(tB.headers,aiB)}</select></div></div>`;
+    }
+    grid.appendChild(div);
+  });
+}
+
+function buildWeightGrid() {
+  const grid = $('weight-grid');
+  grid.innerHTML = '';
+  const EXCLUDABLE = ['congregation', 'presbytery', 'years'];
+  CORE_FIELDS.forEach(f => {
+    const div = document.createElement('div');
+    div.className = 'weight-row';
+    div.id = `wrow_${f.key}`;
+    const excludeHtml = EXCLUDABLE.includes(f.key) ? `
+      <div class="exclude-row">
+        <input type="checkbox" id="excl_${f.key}" onchange="toggleExclude('${f.key}')">
+        <label for="excl_${f.key}">Exclude from overall score</label>
+      </div>` : '';
+    div.innerHTML = `
+      <div class="wlabel">
+        <span style="display:flex;align-items:center;gap:6px;"><span class="dot" style="background:${f.color}"></span>${f.label}</span>
+        <span class="wval" id="wval_${f.key}">${f.defaultW}%</span>
+      </div>
+      <input type="range" id="w_${f.key}" min="0" max="100" value="${f.defaultW}" step="5" oninput="$('wval_${f.key}').textContent=this.value+'%'">
+      ${excludeHtml}`;
+    grid.appendChild(div);
+  });
+}
+
+function autoDetectYears() {
+  $('year-rows').innerHTML = '';
+  yearRowCount = 0;
+  // Find columns whose header looks like a 4-digit year
+  tA.headers.forEach((h, i) => {
+    if (/^(19|20)\d{2}$/.test(h.trim())) {
+      const jB = tB.headers.findIndex(hb => hb.trim() === h.trim());
+      addYearRow(h.trim(), i, jB >= 0 ? jB : -1);
+    }
+  });
+}
+
+$('thresh').addEventListener('input', () => { $('thresh-val').textContent = $('thresh').value + '%'; });
+
+// ── Presbytery source mode ────────────────────────────────────────────────────
+let presbyMode = 'col';
+function setPresbMode(mode) {
+  presbyMode = mode;
+  $('presb-btn-col').classList.toggle('active', mode === 'col');
+  $('presb-btn-manual').classList.toggle('active', mode === 'manual');
+  $('presb-col-input').style.display    = mode === 'col'    ? '' : 'none';
+  $('presb-manual-input').style.display = mode === 'manual' ? '' : 'none';
+}
+
+function getPresbA(rowA) {
+  if (presbyMode === 'manual') {
+    const el = $('mapA_presbytery_manual');
+    return el ? el.value.trim() : '';
+  }
+  return getVal(rowA, 'mapA_presbytery');
+}
+
+function toggleExclude(key) {
+  const checked = $(`excl_${key}`) && $(`excl_${key}`).checked;
+  const row = $(`wrow_${key}`);
+  if (row) row.classList.toggle('excluded', checked);
+}
+
+function getVal(row, selectId) { const sel = $(selectId); if (!sel || sel.value === '') return ''; return (row[parseInt(sel.value)] || '').trim(); }
+function isExcluded(key) { const el = $(`excl_${key}`); return el ? el.checked : false; }
+function getWeight(key) {
+  if (isExcluded(key)) return 0;
+  const el = $('w_' + key); return el ? parseInt(el.value) : 0;
+}
+
+// ── Field similarity ──────────────────────────────────────────────────────────
+function nameSim(rowA, rowB, algo) {
+  const na = getVal(rowA,'mapA_name'), sa = getVal(rowA,'mapA_surname');
+  const nb = getVal(rowB,'mapB_name'), sb = getVal(rowB,'mapB_surname');
+  const fullA = `${na} ${sa}`.trim().toLowerCase();
+  const fullB = `${nb} ${sb}`.trim().toLowerCase();
+  const swapB = `${sb} ${nb}`.trim().toLowerCase();
+  return Math.max(sim(fullA, fullB, algo), sim(fullA, swapB, algo));
+}
+function normalizeDate(s) {
+  s = (s || '').trim();
+  if (!s) return '';
+
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  // DD MM YYYY / DD-MM-YYYY / DD/MM/YYYY / DD.MM.YYYY (day-first, 1-or-2 digit day/month)
+  const dmy = s.match(/^(\d{1,2})[\s\-\/\.](\d{1,2})[\s\-\/\.](\d{4})$/);
+  if (dmy) {
+    const [, d, m, y] = dmy;
+    return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+  }
+
+  // YYYY/MM/DD or YYYY.MM.DD
+  const ymd = s.match(/^(\d{4})[\-\/\.](\d{1,2})[\-\/\.](\d{1,2})$/);
+  if (ymd) {
+    const [, y, m, d] = ymd;
+    return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+  }
+
+  // JavaScript Date.toString() e.g. "Wed Jan 30 2008 00:00:00 GMT+0200 (...)"
+  // or any other locale-parseable string — let the engine handle it
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear();
+    const m = String(parsed.getMonth() + 1).padStart(2, '0');
+    const d = String(parsed.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  return s; // return as-is; sim() will still produce a partial score
+}
+
+function dobSim(rowA, rowB, algo) {
+  const a = normalizeDate(getVal(rowA, 'mapA_dob'));
+  const b = normalizeDate(getVal(rowB, 'mapB_dob'));
+  if (!a || !b) return null; // either side missing — exclude from score
+  if (a === b) return 1;     // exact match after normalisation — always 100%
+  return sim(a, b, algo);    // partial score for near-misses (typos, one digit off)
+}
+function presbySim(rowA, rowB) {
+  const valA = getPresbA(rowA).toLowerCase().trim();
+  const valB = getVal(rowB,'mapB_presbytery').toLowerCase().trim();
+  if (!valA && !valB) return 1;
+  if (!valA || !valB) return null; // one side missing — exclude from score
+  return valA === valB ? 1 : 0;
+}
+function yearsSim(rowA, rowB, yearRows) {
+  if (!yearRows.length) return 1;
+  let matches = 0;
+  yearRows.forEach(yr => {
+    const aVal = yr.colA !== '' ? (rowA[parseInt(yr.colA)] || '') : '';
+    const bVal = yr.colB !== '' ? (rowB[parseInt(yr.colB)] || '') : '';
+    if (isAffiliated(aVal) === isAffiliated(bVal)) matches++;
+  });
+  return matches / yearRows.length;
+}
+
+// ── Score a pair ──────────────────────────────────────────────────────────────
+function scoreRow(rowA, rowB, algo, yearRows) {
+  const scores = {};
+  let totalW = 0, weightedSum = 0;
+
+  CORE_FIELDS.forEach(f => {
+    const w = getWeight(f.key);
+    if (w === 0) { scores[f.key] = null; return; }
+    let s;
+    if      (f.key === 'name')         s = nameSim(rowA, rowB, algo);
+    else if (f.key === 'dob')          s = dobSim(rowA, rowB, algo);
+    else if (f.key === 'presbytery')   s = presbySim(rowA, rowB);
+    else if (f.key === 'years')        s = yearsSim(rowA, rowB, yearRows);
+    else {
+      const a = getVal(rowA,'mapA_'+f.key);
+      const b = getVal(rowB,'mapB_'+f.key);
+      s = (!a || !b) ? null : sim(a, b, algo);
+    }
+
+    scores[f.key] = s;
+    if (s !== null) { // only include in score if not explicitly excluded
+      totalW += w;
+      weightedSum += s * w;
+    }
+  });
+
+  return { overall: totalW > 0 ? weightedSum / totalW : 0, scores };
+}
+
+// ── One-to-one assignment ─────────────────────────────────────────────────────
+function oneToOneAssign(scoreMatrix, thresh) {
+  const nA = scoreMatrix.length, nB = scoreMatrix[0].length;
+  const pairs = [];
+  for (let i = 0; i < nA; i++) for (let j = 0; j < nB; j++) pairs.push({ i, j, overall: scoreMatrix[i][j].overall });
+  pairs.sort((a, b) => b.overall - a.overall);
+  const usedA = new Set(), usedB = new Set();
+  const assignments = new Array(nA).fill(null);
+  for (const { i, j, overall } of pairs) {
+    if (overall < thresh) break;
+    if (usedA.has(i) || usedB.has(j)) continue;
+    assignments[i] = j; usedA.add(i); usedB.add(j);
+  }
+  return assignments;
+}
+
+// ── Run ───────────────────────────────────────────────────────────────────────
+function runLookup() {
+  if (!tA || !tB) { alert('Load columns first.'); return; }
+  const algo     = $('algo').value;
+  const thresh   = parseInt($('thresh').value) / 100;
+  const yearRows  = getYearRows();
+
+  const scoreMatrix = tA.rows.map((rowA, i) =>
+    tB.rows.map(rowB => scoreRow(rowA, rowB, algo, yearRows))
+  );
+
+  let assignments;
+  if (matchMode === 'one') {
+    assignments = oneToOneAssign(scoreMatrix, thresh);
+  } else {
+    assignments = tA.rows.map((_, i) => {
+      let best = -1, bestScore = -1;
+      tB.rows.forEach((_, j) => { if (scoreMatrix[i][j].overall > bestScore) { bestScore = scoreMatrix[i][j].overall; best = j; } });
+      return (best >= 0 && scoreMatrix[i][best].overall >= thresh) ? best : null;
+    });
+  }
+
+  lastResults = [];
+  _committedIndices = new Set();
+  _selectedIndices  = new Set();
+  _filterMatch = 'all'; _filterDec = 'all'; _filterScore = 'all';
+  _filterFieldKey = ''; _filterFieldScore = 'all';
+  document.querySelectorAll('.fchip').forEach(b => b.classList.toggle('active', b.dataset.fg ? b.textContent.trim() === 'All' : false));
+  const bulkBar = $('bulk-bar'); if (bulkBar) bulkBar.style.display = 'none';
+  const selAllWrap = $('sel-all-wrap'); if (selAllWrap) selAllWrap.style.display = 'none';
+  const container = $('result-cards');
+  container.innerHTML = '';
+
+  const activeCore = CORE_FIELDS.filter(f => f.key !== 'years' && getWeight(f.key) > 0);
+  const showYears  = getWeight('years') > 0 && yearRows.length > 0;
+  _lastRunConfig = { activeCore, showYears, yearRows, algo };
+
+  let matched = 0;
+  tA.rows.forEach((rowA, i) => {
+    const j = assignments[i], noMatch = j === null;
+    const best = noMatch ? null : { rowB: tB.rows[j], ...scoreMatrix[i][j] };
+    lastResults.push({ rowA, rowB: best ? best.rowB : null, overall: best ? best.overall : 0, scores: best ? best.scores : {}, rowIdx: i, refRowIdx: j });
+
+    const card = document.createElement('div');
+    card.className = 'rcard' + (noMatch ? ' rcard-no-match' : '');
+    card.dataset.rowIdx = i;
+
+    if (noMatch) {
+      const chkHtml = _dbMode ? `<input type="checkbox" class="rcard-check" id="chk_${i}" onchange="toggleCardSelect(${i},this)">` : '';
+      let hHtml = `<div class="rcard-header">${chkHtml}<span class="rcard-ref">#${i+1}</span><span class="score-pill score-low" style="font-size:10px;">no match</span><span style="flex:1;"></span>`;
+      if (_dbMode) hHtml += `<select class="decision-sel" id="dec_${i}" onchange="updateDecStyle(this)"><option value="new">Add as new</option><option value="skip">Skip</option></select>`;
+      hHtml += '</div>';
+
+      let bHtml = '<div class="rcard-nomatch">';
+      activeCore.forEach(f => {
+        let valA;
+        if (f.key === 'name') valA = [getVal(rowA,'mapA_name'), getVal(rowA,'mapA_surname')].filter(Boolean).join(' ');
+        else if (f.key === 'presbytery') valA = getPresbA(rowA);
+        else valA = getVal(rowA, 'mapA_'+f.key);
+        bHtml += `<div class="rcard-nm-field"><span>${f.label}</span><span>${valA||'—'}</span></div>`;
+      });
+      bHtml += '</div>';
+      card.innerHTML = hHtml + bHtml;
+
+    } else {
+      matched++;
+      const pct = Math.round(best.overall * 100);
+      const pillCls = pct >= 75 ? 'score-high' : pct >= 50 ? 'score-mid' : 'score-low';
+      const isManualPresb = presbyMode === 'manual';
+      const memberID = best.rowB[0] || '';
+
+      const chkHtml = _dbMode ? `<input type="checkbox" class="rcard-check" id="chk_${i}" onchange="toggleCardSelect(${i},this)">` : '';
+      let hHtml = `<div class="rcard-header">${chkHtml}<span class="rcard-ref">#${i+1}</span><span class="score-pill ${pillCls}">${pct}%</span><span style="font-size:11px;color:#aaa;">→ DB #${memberID}</span><span id="ovtag_${i}"></span><span style="flex:1;"></span>`;
+      if (_dbMode) hHtml += `<select class="decision-sel" id="dec_${i}" onchange="updateDecStyle(this)"><option value="confirm">Confirm match</option><option value="new">Add as new</option><option value="skip">Skip</option></select>`;
+      hHtml += `<button class="change-match-btn" id="ovbtn_${i}" onclick="openOverridePanel(${i})" title="Override the fuzzy-matched member">⇄ Change</button>`;
+      hHtml += '</div>';
+
+      let bHtml = `<div class="rcard-body"><div class="rcard-row" style="margin-bottom:2px;"><span></span><span style="font-size:9px;font-weight:700;color:#ccc;text-transform:uppercase;letter-spacing:.05em;">Import</span><span></span><span style="font-size:9px;font-weight:700;color:#ccc;text-transform:uppercase;letter-spacing:.05em;">Database</span><span></span></div>`;
+
+      activeCore.forEach(f => {
+        let valA, valB;
+        if (f.key === 'name') {
+          valA = [getVal(rowA,'mapA_name'), getVal(rowA,'mapA_surname')].filter(Boolean).join(' ');
+          valB = [getVal(best.rowB,'mapB_name'), getVal(best.rowB,'mapB_surname')].filter(Boolean).join(' ');
+        } else if (f.key === 'presbytery') {
+          valA = getPresbA(rowA);
+          valB = getVal(best.rowB,'mapB_presbytery');
+        } else {
+          valA = getVal(rowA,'mapA_'+f.key);
+          valB = getVal(best.rowB,'mapB_'+f.key);
+        }
+        const fs = best.scores[f.key];
+        const fp = fs != null ? Math.round(fs * 100) : null;
+        const fCls = fp == null ? '' : fp >= 75 ? 'fscore-high' : fp >= 50 ? 'fscore-mid' : 'fscore-low';
+        const diff = valA && valB && valA.toLowerCase() !== valB.toLowerCase();
+        const manualTag = (f.key === 'presbytery' && isManualPresb) ? ' <span class="override-tag">manual</span>' : '';
+        const scoreBadge = fs === null
+          ? '<span style="font-size:10px;color:#bbb;font-style:italic;">excl.</span>'
+          : (fp != null ? `<span class="fscore ${fCls}">${fp}%</span>` : '—');
+        bHtml += `<div class="rcard-row"><span class="rcard-label">${f.label}</span><span class="rcard-val">${valA||'—'}${manualTag}</span><span class="rcard-arr">→</span><span class="rcard-val rcard-val-b${diff?' diff':''}">${valB||'—'}</span>${scoreBadge}</div>`;
+      });
+
+      if (showYears) {
+        const yfs = best.scores['years'];
+        const yfp = yfs != null ? Math.round(yfs * 100) : null;
+        const yfCls = yfp == null ? '' : yfp >= 75 ? 'fscore-high' : yfp >= 50 ? 'fscore-mid' : 'fscore-low';
+        const scoreBadge = yfp != null ? `<span class="fscore ${yfCls}">${yfp}%</span>` : '—';
+        let aYears = '<div class="rcard-years">', bYears = '<div class="rcard-years">';
+        yearRows.forEach(yr => {
+          const aRaw = yr.colA !== '' ? (rowA[parseInt(yr.colA)] || '') : '';
+          const bRaw = yr.colB !== '' ? (best.rowB[parseInt(yr.colB)] || '') : '';
+          const aAff = isAffiliated(aRaw), bAff = isAffiliated(bRaw);
+          const match = aAff === bAff;
+          aYears += `<span class="affil-badge ${aAff?'affil-yes':'affil-no'}" title="${yr.label}: Import">${yr.label}</span>`;
+          bYears += `<span class="affil-badge ${match?(bAff?'affil-yes':'affil-no'):'affil-diff'}" title="${yr.label}: DB">${yr.label}</span>`;
+        });
+        aYears += '</div>'; bYears += '</div>';
+        bHtml += `<div class="rcard-row"><span class="rcard-label">Years</span>${aYears}<span class="rcard-arr">→</span>${bYears}${scoreBadge}</div>`;
+      }
+
+      bHtml += '</div>';
+      const ovpHtml = `<div id="ovp_${i}" class="override-panel" style="display:none;"><div class="ovp-header"><span class="ovp-title">Change matched member</span><button class="ovp-close" onclick="openOverridePanel(${i})">✕ Close</button></div><input class="ovp-search" type="text" placeholder="Search by name or surname…" oninput="renderOverrideList(${i},this.value)"><div class="ovp-list" id="ovplist_${i}"></div></div>`;
+      card.innerHTML = hHtml + bHtml + ovpHtml;
+    }
+
+    container.appendChild(card);
+  });
+
+  $('res-count').textContent = `${matched} matched / ${tA.rows.length} rows`;
+  $('results-section').style.display = '';
+  $('result-filter-bar').style.display = '';
+
+  // Reset text search state for the new results
+  _filterText = ''; _filterTextCol = '';
+  const searchTextEl = $('filter-search-text'); if (searchTextEl) searchTextEl.value = '';
+  const searchColEl  = $('filter-search-col');
+  if (searchColEl) {
+    searchColEl.innerHTML = '<option value="">Any column</option>';
+    if (tA && tA.headers) {
+      tA.headers.forEach((h, idx) => {
+        const o = document.createElement('option');
+        o.value = String(idx);
+        o.textContent = h || `Col ${idx + 1}`;
+        searchColEl.appendChild(o);
+      });
+    }
+  }
+
+  // Populate column score filter dropdown
+  const fieldSel = $('filter-field-key');
+  if (fieldSel) {
+    fieldSel.innerHTML = '<option value="">Any field</option>';
+    activeCore.forEach(f => {
+      const o = document.createElement('option');
+      o.value = f.key; o.textContent = f.label;
+      fieldSel.appendChild(o);
+    });
+    if (showYears) {
+      const o = document.createElement('option');
+      o.value = 'years'; o.textContent = 'Years';
+      fieldSel.appendChild(o);
+    }
+    $('filter-field-group').style.display = activeCore.length ? '' : 'none';
+  }
+
+  if (_dbMode) {
+    $('filter-dec-group').style.display = '';
+    $('commit-group').style.display = '';
+    $('sel-all-wrap').style.display = '';
+    document.querySelectorAll('.decision-sel').forEach(sel => updateDecStyle(sel));
+    buildCongMapping();
+  }
+  applyFilters();
+  $('results-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ── Excel paste zone (Table A) ────────────────────────────────────────────────
+let _taMode = 'csv';
+
+function setTableAMode(mode) {
+  _taMode = mode;
+  $('ta-csv-btn').classList.toggle('active', mode === 'csv');
+  $('ta-sheet-btn').classList.toggle('active', mode === 'sheet');
+  $('tableA').style.display       = mode === 'csv'   ? '' : 'none';
+  $('tableA-sheet').style.display = mode === 'sheet' ? '' : 'none';
+  if (mode === 'sheet') $('tableA-paste-zone').focus();
+}
+
+function getTableACSV() {
+  // In sheet mode the textarea is kept in sync by handleExcelPaste, so always read from it
+  return $('tableA').value;
+}
+
+function handleExcelPaste(text) {
+  if (!text || !text.trim()) return;
+  const rows = text.split('\n').filter(r => r.replace(/\t/g, '').trim()).map(r => r.split('\t').map(c => c.replace(/\r$/, '')));
+  if (!rows.length) return;
+
+  // Convert TSV → CSV and push into the textarea so loadColumns() picks it up
+  const csv = rows.map(r =>
+    r.map(c => { const s = c.trim(); return (s.includes(',') || s.includes('"') || s.includes('\n')) ? `"${s.replace(/"/g, '""')}"` : s; }).join(',')
+  ).join('\n');
+  $('tableA').value = csv;
+
+  renderPastePreview(rows);
+}
+
+function renderPastePreview(rows) {
+  const zone    = $('tableA-paste-zone');
+  const preview = $('tableA-paste-preview');
+  const clearBtn = $('clearPasteBtn');
+  if (!rows || !rows.length) {
+    _tAAllRows = []; _tAHeaders = []; _tAFilters = {};
+    zone.textContent = 'Click here, then press Ctrl+V to paste from Excel';
+    zone.classList.remove('has-data');
+    preview.innerHTML = '';
+    if (clearBtn) clearBtn.style.display = 'none';
+    return;
+  }
+
+  const [header, ...body] = rows;
+  _tAHeaders = header;
+  _tAAllRows = body;
+  _tAFilters = {};
+
+  zone.innerHTML = `<strong>${rows.length - 1}</strong> rows pasted (${header.length} columns) — ready to use`;
+  zone.classList.add('has-data');
+  if (clearBtn) clearBtn.style.display = '';
+
+  buildSpreadsheetPreview('tA', preview);
+}
+
+async function pasteFromClipboard() {
+  try {
+    const text = await navigator.clipboard.readText();
+    handleExcelPaste(text);
+  } catch(e) {
+    $('tableA-paste-zone').focus();
+    alert('Click the paste area below and press Ctrl+V.');
+  }
+}
+
+function clearPasteData() {
+  $('tableA').value = '';
+  renderPastePreview(null);
+}
+
+// ── Spreadsheet filter helpers ────────────────────────────────────────────────
+function applyColFilters(rows, filters) {
+  if (!filters || !Object.keys(filters).length) return rows;
+  return rows.filter(row =>
+    Object.entries(filters).every(([ci, vals]) =>
+      !vals || !vals.size || vals.has(String(row[parseInt(ci)] == null ? '' : row[parseInt(ci)]))
+    )
+  );
+}
+
+function buildSpreadsheetPreview(prefix, container) {
+  if (!container) return;
+  const allRows = prefix === 'tA' ? _tAAllRows : _tBAllRows;
+  const headers = prefix === 'tA' ? _tAHeaders : _tBHeaders;
+  const filters = prefix === 'tA' ? _tAFilters : _tBFilters;
+  if (!allRows.length) { container.innerHTML = ''; return; }
+
+  const filtered = applyColFilters(allRows, filters);
+  const filterCount = Object.values(filters).filter(v => v && v.size).length;
+
+  let html = '<div class="ss-preview-wrap"><table><thead><tr>';
+  headers.forEach((h, i) => {
+    const isFiltered = filters[i] && filters[i].size;
+    html += `<th><div class="th-inner">${h || `Col ${i+1}`}<button class="col-filter-btn${isFiltered ? ' filtered' : ''}" onclick="openColFilter('${prefix}',${i},this)" title="Filter column">▼</button></div></th>`;
+  });
+  html += '</tr></thead><tbody>';
+  const cap = Math.min(filtered.length, 100);
+  filtered.slice(0, cap).forEach(row => {
+    html += '<tr>' + headers.map((_, i) => `<td>${row[i] == null ? '' : String(row[i]).replace(/&/g,'&amp;').replace(/</g,'&lt;')}</td>`).join('') + '</tr>';
+  });
+  if (filtered.length > cap) html += `<tr><td colspan="${headers.length}" style="text-align:center;color:#bbb;font-style:italic;padding:6px;">…${filtered.length - cap} more rows</td></tr>`;
+  html += '</tbody></table></div>';
+  html += `<div class="ss-row-count">${filtered.length}${filtered.length !== allRows.length ? ' of ' + allRows.length : ''} row${filtered.length !== 1 ? 's' : ''}${filterCount ? ' · ' + filterCount + ' filter' + (filterCount > 1 ? 's' : '') + ' active' : ''}</div>`;
+  container.innerHTML = html;
+}
+
+function openColFilter(prefix, colIdx, anchorEl) {
+  closeColFilter();
+  const allRows = prefix === 'tA' ? _tAAllRows : _tBAllRows;
+  const filters  = prefix === 'tA' ? _tAFilters  : _tBFilters;
+  const activeSet = filters[colIdx] || null;
+  const uniqueVals = [...new Set(allRows.map(r => String(r[colIdx] == null ? '' : r[colIdx])))].sort((a,b) => a.localeCompare(b, undefined, {numeric:true}));
+
+  const panel = document.createElement('div');
+  panel.className = 'col-filter-panel'; panel.id = 'cfp';
+
+  const itemsHtml = uniqueVals.map(v => {
+    const checked = !activeSet || activeSet.has(v);
+    const esc = v.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return `<div class="cfp-item"><input type="checkbox" value="${esc}" ${checked?'checked':''}><label>${v || '<em style="color:#aaa">(blank)</em>'}</label></div>`;
+  }).join('');
+
+  panel.innerHTML = `
+    <input class="cfp-search" type="text" placeholder="Search values…" oninput="cfpSearch(this)">
+    <div class="cfp-actions">
+      <button onclick="cfpSelectAll(true)">Select All</button>
+      <button onclick="cfpSelectAll(false)">Clear</button>
+    </div>
+    <div class="cfp-list" id="cfp-list">${itemsHtml}</div>
+    <div class="cfp-footer">
+      <button class="cfp-apply" onclick="applyColFilter('${prefix}',${colIdx})">Apply</button>
+      <button class="cfp-cancel" onclick="closeColFilter()">Cancel</button>
+    </div>`;
+
+  document.body.appendChild(panel);
+  _openColFilterState = { prefix, colIdx };
+
+  const rect = anchorEl.getBoundingClientRect();
+  let top  = rect.bottom + window.scrollY + 4;
+  let left = rect.left  + window.scrollX;
+  if (left + 214 > window.innerWidth) left = Math.max(4, window.innerWidth - 218);
+  panel.style.top = top + 'px'; panel.style.left = left + 'px';
+
+  setTimeout(() => document.addEventListener('click', _cfpOutside, true), 0);
+}
+
+function _cfpOutside(e) {
+  const p = document.getElementById('cfp');
+  if (p && !p.contains(e.target)) closeColFilter();
+}
+
+function closeColFilter() {
+  const p = document.getElementById('cfp'); if (p) p.remove();
+  _openColFilterState = null;
+  document.removeEventListener('click', _cfpOutside, true);
+}
+
+function cfpSearch(input) {
+  const q = input.value.toLowerCase();
+  document.querySelectorAll('#cfp-list .cfp-item').forEach(item => {
+    const txt = item.querySelector('label').textContent.toLowerCase();
+    item.style.display = (q && !txt.includes(q)) ? 'none' : '';
+  });
+}
+
+function cfpSelectAll(checked) {
+  document.querySelectorAll('#cfp-list .cfp-item').forEach(item => {
+    if (item.style.display !== 'none') item.querySelector('input').checked = checked;
+  });
+}
+
+function applyColFilter(prefix, colIdx) {
+  const filters = prefix === 'tA' ? _tAFilters : _tBFilters;
+  const allRows = prefix === 'tA' ? _tAAllRows : _tBAllRows;
+  const checkboxes = [...document.querySelectorAll('#cfp-list .cfp-item input[type=checkbox]')];
+  const total    = [...new Set(allRows.map(r => String(r[colIdx] == null ? '' : r[colIdx])))];
+  const selected = new Set(checkboxes.filter(cb => cb.checked).map(cb => cb.value));
+  if (selected.size === 0 || selected.size >= total.length) delete filters[colIdx];
+  else filters[colIdx] = selected;
+  closeColFilter();
+  const containerId = prefix === 'tA' ? 'tableA-paste-preview' : 'tableB-paste-preview';
+  buildSpreadsheetPreview(prefix, document.getElementById(containerId));
+}
+
+// ── Table B spreadsheet mode ──────────────────────────────────────────────────
+function setTableBMode(mode) {
+  _tbMode = mode;
+  $('tb-csv-btn').classList.toggle('active', mode === 'csv');
+  $('tb-sheet-btn').classList.toggle('active', mode === 'sheet');
+  $('tableB').style.display       = mode === 'csv'   ? '' : 'none';
+  $('tableB-sheet').style.display = mode === 'sheet' ? '' : 'none';
+  if (mode === 'sheet') $('tableB-paste-zone').focus();
+}
+
+function handleTableBPaste(text) {
+  if (!text || !text.trim()) return;
+  const rows = text.split('\n').filter(r => r.replace(/\t/g,'').trim()).map(r => r.split('\t').map(c => c.replace(/\r$/,'')));
+  if (!rows.length) return;
+  const csv = rows.map(r => r.map(c => { const s = c.trim(); return (s.includes(',')||s.includes('"')||s.includes('\n')) ? `"${s.replace(/"/g,'""')}"` : s; }).join(',')).join('\n');
+  $('tableB').value = csv;
+  const [header, ...body] = rows;
+  _tBHeaders = header; _tBAllRows = body; _tBFilters = {};
+  const zone = $('tableB-paste-zone'), clearBtn = $('clearPasteBBtn');
+  zone.innerHTML = `<strong>${body.length}</strong> rows pasted (${header.length} columns) — ready to use`;
+  zone.classList.add('has-data');
+  if (clearBtn) clearBtn.style.display = '';
+  buildSpreadsheetPreview('tB', $('tableB-paste-preview'));
+}
+
+async function pasteTableBFromClipboard() {
+  try {
+    const text = await navigator.clipboard.readText();
+    handleTableBPaste(text);
+  } catch(e) {
+    $('tableB-paste-zone').focus();
+    alert('Click the paste area below and press Ctrl+V.');
+  }
+}
+
+function clearTableBPaste() {
+  $('tableB').value = '';
+  _tBAllRows = []; _tBHeaders = []; _tBFilters = {};
+  const zone = $('tableB-paste-zone'), clearBtn = $('clearPasteBBtn');
+  zone.textContent = 'Click here, then press Ctrl+V to paste from Excel';
+  zone.classList.remove('has-data');
+  if (clearBtn) clearBtn.style.display = 'none';
+  const preview = $('tableB-paste-preview'); if (preview) preview.innerHTML = '';
+}
+
+// Wire paste events once DOM is ready
+document.addEventListener('DOMContentLoaded', () => { initDatabase(); // warm IDB cache before any commit
+  // Ctrl+V on the paste zone
+  $('tableA-paste-zone').addEventListener('paste', e => {
+    e.preventDefault();
+    handleExcelPaste(e.clipboardData.getData('text/plain'));
+  });
+  // Also intercept paste on the CSV textarea — if it's TSV (from Excel), convert automatically
+  $('tableA').addEventListener('paste', e => {
+    const text = e.clipboardData.getData('text/plain');
+    if (!text.includes('\t')) return; // plain CSV — let browser handle it
+    e.preventDefault();
+    handleExcelPaste(text);
+    // Switch to spreadsheet mode so the preview is visible
+    setTableAMode('sheet');
+  });
+
+  // Table B paste zone
+  const tbZone = $('tableB-paste-zone');
+  if (tbZone) {
+    tbZone.addEventListener('paste', e => {
+      e.preventDefault();
+      handleTableBPaste(e.clipboardData.getData('text/plain'));
+    });
+  }
+  // Table B textarea — intercept TSV paste
+  $('tableB').addEventListener('paste', e => {
+    const text = e.clipboardData.getData('text/plain');
+    if (!text.includes('\t')) return;
+    e.preventDefault();
+    handleTableBPaste(text);
+    setTableBMode('sheet');
+  });
+});
+
+// ── DB integration ────────────────────────────────────────────────────────────
+function loadFromDB() {
+  let db;
+  try { db = getDatabase(); } catch(e) {
+    $('parse-warn').innerHTML = '<div class="warn">Database could not be read (corrupted data).</div>';
+    return;
+  }
+  const members = db.Member || [];
+  if (!members.length) {
+    $('parse-warn').innerHTML = '<div class="warn">No members in the database yet.</div>';
+    return;
+  }
+  _dbRaw = db;
+  _dbMode = true;
+
+  // Build Table B CSV: memberID, core fields, congregation, presbytery, then one Yes/No column per year
+  const affiliations  = db.Affiliation  || [];
+  const congregations = db.Congregation || [];
+  const presbyteries  = db.Presbytery   || [];
+
+  // Index affiliations by memberID — used only for year period columns
+  const affsByMember = {};
+  affiliations.forEach(a => {
+    if (!affsByMember[a.memberID]) affsByMember[a.memberID] = [];
+    affsByMember[a.memberID].push(a);
+  });
+
+  // Collect all unique years, sorted ascending
+  const allYears = [...new Set(affiliations.map(a => String(a.yearRegistered)).filter(Boolean))].sort();
+
+  const q = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+
+  const header = ['memberID','title','surname','name','dob','gender','congregation','presbytery', ...allYears];
+  const csvRows = [header.map(q).join(',')];
+
+  members.forEach(m => {
+    const mAffs   = affsByMember[m.memberID] || [];
+    const yearCols = allYears.map(y => mAffs.some(a => String(a.yearRegistered) === y) ? 'Yes' : 'No');
+
+    csvRows.push([m.memberID, m.title||'', m.surname||'', m.name||'', normalizeDate(m.dob), m.gender||'', m.Congregation||'', m.Presbytery||'', ...yearCols].map(q).join(','));
+  });
+
+  $('tableB').value = csvRows.join('\n');
+
+  // Populate Table B spreadsheet view with filter support
+  const tbParsed = csvRows.map(row => {
+    const vals = []; let cur = '', inQ = false;
+    for (const c of row) {
+      if (c === '"') { inQ = !inQ; continue; }
+      if (c === ',' && !inQ) { vals.push(cur); cur = ''; continue; }
+      cur += c;
+    }
+    vals.push(cur); return vals;
+  });
+  if (tbParsed.length > 1) {
+    _tBHeaders = tbParsed[0];
+    _tBAllRows = tbParsed.slice(1);
+    _tBFilters = {};
+    const zone = $('tableB-paste-zone'), clearBtn = $('clearPasteBBtn');
+    if (zone) { zone.innerHTML = `<strong>${_tBAllRows.length}</strong> members loaded from database`; zone.classList.add('has-data'); }
+    if (clearBtn) clearBtn.style.display = '';
+    setTableBMode('sheet');
+    buildSpreadsheetPreview('tB', $('tableB-paste-preview'));
+  }
+
+  // Populate Presbytery dropdown
+  const presEl = $('importPresbytery');
+  presEl.innerHTML = '<option value="">All Presbyteries</option>';
+  (db.Presbytery || []).slice().sort((a,b) => (a.name||'').localeCompare(b.name||'')).forEach(p => {
+    const o = document.createElement('option'); o.value = p.presbyteryID; o.textContent = p.name; presEl.appendChild(o);
+  });
+  $('importYear').value = new Date().getFullYear();
+  $('import-config').style.display = '';
+  $('parse-warn').innerHTML = `<div class="info-box" style="margin-top:8px;"><strong>${members.length} members loaded</strong> from the FOY database. Set the import target above, then click "Load columns →" to continue.</div>`;
+}
+
+function getPresbyteryCongs() {
+  if (!_dbRaw) return [];
+  const presID = $('importPresbytery').value;
+  const congs = (_dbRaw.Congregation || []).filter(c => !presID || String(c.presbyteryID) === String(presID));
+  return congs.slice().sort((a,b) => (a.name||'').localeCompare(b.name||''));
+}
+
+// Called when presbytery selection changes after a mapping was already built
+function refreshCongMapping() {
+  if ($('cong-map-section').style.display !== 'none') buildCongMapping();
+}
+
+let _uniqueCongNames = [];
+
+function buildCongMapping() {
+  const congColSel = $('mapA_congregation');
+  const section    = $('cong-map-section');
+
+  if (!tA || !congColSel || congColSel.value === '') {
+    section.style.display = 'none';
+    return;
+  }
+
+  const congColIdx = parseInt(congColSel.value);
+  _uniqueCongNames = [...new Set(tA.rows.map(r => (r[congColIdx] || '').trim()).filter(Boolean))].sort();
+
+  if (!_uniqueCongNames.length) { section.style.display = 'none'; return; }
+
+  const dbCongs = getPresbyteryCongs();
+  const congOptions = dbCongs.map(c => `<option value="${c.congregationID}">${c.name}</option>`).join('');
+
+  const rowsEl = $('cong-map-rows');
+  rowsEl.innerHTML = '';
+
+  _uniqueCongNames.forEach((name, idx) => {
+    // Auto-suggest best match via jaro-winkler
+    let bestID = '', bestScore = 0;
+    dbCongs.forEach(c => {
+      const s = jaroWinkler(name.toLowerCase(), (c.name || '').toLowerCase());
+      if (s > bestScore) { bestScore = s; bestID = c.congregationID; }
+    });
+    const autoSelect  = bestScore >= 0.75 ? bestID : '';
+    const pct         = Math.round(bestScore * 100);
+    const pillCls     = pct >= 85 ? 'score-high' : pct >= 60 ? 'score-mid' : 'score-low';
+
+    const row = document.createElement('div');
+    row.style.cssText = 'margin-bottom:12px;';
+    row.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 28px 1fr auto;gap:12px;align-items:center;">
+        <div style="font-size:12px;padding:6px 10px;background:#fafaf7;border:1px solid #e2e1db;border-radius:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${name}">${name}</div>
+        <div style="text-align:center;color:#bbb;font-size:14px;">→</div>
+        <select id="congmap_${idx}" style="font-size:12px;padding:5px 8px;border:1px solid #e2e1db;border-radius:7px;background:#fafaf7;width:100%;" onchange="onCongMapChange(${idx})">
+          <option value="">-- skip this congregation --</option>
+          <option value="__new__">✦ Create "${name}" as new congregation</option>
+          ${congOptions}
+        </select>
+        <div style="min-width:80px;text-align:right;">
+          <span id="congbadge_${idx}" class="cong-new-badge pending" style="display:none;">Will create</span>
+          <span id="congscore_${idx}" class="score-pill ${pillCls}" style="font-size:10px;">${pct}%</span>
+        </div>
+      </div>`;
+    rowsEl.appendChild(row);
+
+    if (autoSelect) $(`congmap_${idx}`).value = autoSelect;
+  });
+
+  $('cong-map-count').textContent = `${_uniqueCongNames.length} congregation${_uniqueCongNames.length !== 1 ? 's' : ''}`;
+  section.style.display = '';
+}
+
+function onCongMapChange(idx) {
+  const sel   = $(`congmap_${idx}`);
+  const badge = $(`congbadge_${idx}`);
+  const score = $(`congscore_${idx}`);
+  if (!sel) return;
+  const isNew = sel.value === '__new__';
+  if (badge) badge.style.display = isNew ? '' : 'none';
+  if (score) score.style.display = isNew ? 'none' : '';
+}
+
+function getRowCongID(rowA) {
+  const congColSel = $('mapA_congregation');
+  if (!congColSel || congColSel.value === '') return null;
+  const name = (rowA[parseInt(congColSel.value)] || '').trim();
+  const idx  = _uniqueCongNames.indexOf(name);
+  if (idx === -1) return null;
+  const sel = $(`congmap_${idx}`);
+  // __new__ sentinel: commitImport replaces it with the real ID before calling getRowCongID
+  if (!sel || !sel.value || sel.value === '__new__') return null;
+  return sel.value;
+}
+
+// ── Filter & commit state ─────────────────────────────────────────────────────
+let _committedIndices = new Set();
+let _selectedIndices  = new Set();
+let _filterMatch = 'all', _filterDec = 'all', _filterScore = 'all';
+let _filterFieldKey = '', _filterFieldScore = 'all';
+let _filterText = '', _filterTextCol = '';
+let _sortOrder = 'original';
+
+// ── Selection helpers ─────────────────────────────────────────────────────────
+function toggleCardSelect(i, cb) {
+  const card = document.querySelector(`.rcard[data-row-idx="${i}"]`);
+  if (cb.checked) {
+    _selectedIndices.add(i);
+    if (card) card.classList.add('selected');
+  } else {
+    _selectedIndices.delete(i);
+    if (card) card.classList.remove('selected');
+  }
+  updateBulkBar();
+}
+
+function selectAllVisible(masterCb) {
+  const visible = [...document.querySelectorAll('.rcard:not(.rc-hidden)')];
+  visible.forEach(card => {
+    const i = parseInt(card.dataset.rowIdx);
+    const cb = document.getElementById(`chk_${i}`);
+    if (masterCb.checked) {
+      _selectedIndices.add(i);
+      card.classList.add('selected');
+      if (cb) cb.checked = true;
+    } else {
+      _selectedIndices.delete(i);
+      card.classList.remove('selected');
+      if (cb) cb.checked = false;
+    }
+  });
+  updateBulkBar();
+}
+
+function clearSelection() {
+  _selectedIndices.forEach(i => {
+    const card = document.querySelector(`.rcard[data-row-idx="${i}"]`);
+    if (card) card.classList.remove('selected');
+    const cb = document.getElementById(`chk_${i}`);
+    if (cb) cb.checked = false;
+  });
+  _selectedIndices.clear();
+  updateBulkBar();
+}
+
+function bulkSetDecision(dec) {
+  // Only act on visible selected cards
+  _selectedIndices.forEach(i => {
+    const card = document.querySelector(`.rcard[data-row-idx="${i}"]`);
+    if (!card || card.classList.contains('rc-hidden')) return;
+    const sel = document.getElementById(`dec_${i}`);
+    if (sel) { sel.value = dec; updateDecStyle(sel); }
+  });
+  clearSelection();
+}
+
+function updateBulkBar() {
+  // Count only visible selected
+  const visibleSelected = [..._selectedIndices].filter(i => {
+    const card = document.querySelector(`.rcard[data-row-idx="${i}"]`);
+    return card && !card.classList.contains('rc-hidden');
+  });
+  const n = visibleSelected.length;
+  const bar   = document.getElementById('bulk-bar');
+  const count = document.getElementById('bulk-count');
+  if (bar)   bar.style.display = (_dbMode && n > 0) ? '' : 'none';
+  if (count) count.textContent = `${n} selected`;
+
+  // Sync select-all checkbox indeterminate state
+  const masterCb = document.getElementById('sel-all-check');
+  if (masterCb) {
+    const totalVisible = document.querySelectorAll('.rcard:not(.rc-hidden)').length;
+    masterCb.indeterminate = n > 0 && n < totalVisible;
+    masterCb.checked = totalVisible > 0 && n >= totalVisible;
+  }
+}
+
+function setFilter(group, val, btn) {
+  if (group === 'match')      _filterMatch = val;
+  else if (group === 'dec')   _filterDec = val;
+  else if (group === 'score') _filterScore = val;
+  else if (group === 'fieldScore') _filterFieldScore = val;
+  if (btn) {
+    document.querySelectorAll(`.fchip[data-fg="${group}"]`).forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+  applyFilters();
+}
+
+function setFieldKeyFilter() {
+  _filterFieldKey = ($('filter-field-key') || {}).value || '';
+  applyFilters();
+}
+
+function setSearchTextFilter() {
+  _filterText = ($('filter-search-text')?.value || '').toLowerCase().trim();
+  applyFilters();
+}
+
+function setSearchColFilter() {
+  _filterTextCol = $('filter-search-col')?.value ?? '';
+  applyFilters();
+}
+
+function clearSearchFilter() {
+  _filterText = ''; _filterTextCol = '';
+  const t = $('filter-search-text'); if (t) t.value = '';
+  const c = $('filter-search-col');  if (c) c.value = '';
+  applyFilters();
+}
+
+function applyFilters() {
+  let visible = 0;
+  document.querySelectorAll('.rcard').forEach(card => {
+    const i = parseInt(card.dataset.rowIdx);
+    const res = lastResults[i];
+    if (!res || _committedIndices.has(i)) { card.classList.add('rc-hidden'); return; }
+
+    const isMatch = res.rowB !== null;
+    if (_filterMatch === 'matched' && !isMatch)  { card.classList.add('rc-hidden'); return; }
+    if (_filterMatch === 'nomatch' && isMatch)    { card.classList.add('rc-hidden'); return; }
+
+    if (_dbMode && _filterDec !== 'all') {
+      const sel = document.getElementById(`dec_${i}`);
+      if ((sel ? sel.value : 'skip') !== _filterDec) { card.classList.add('rc-hidden'); return; }
+    }
+
+    if (_filterScore !== 'all') {
+      const pct = Math.round((res.overall || 0) * 100);
+      if (_filterScore === 'vhigh' && pct < 90)                { card.classList.add('rc-hidden'); return; }
+      if (_filterScore === 'high'  && (pct < 75 || pct >= 90)) { card.classList.add('rc-hidden'); return; }
+      if (_filterScore === 'mid'   && (pct < 50 || pct >= 75)) { card.classList.add('rc-hidden'); return; }
+      if (_filterScore === 'low'   && pct >= 50)               { card.classList.add('rc-hidden'); return; }
+    }
+
+    if (_filterFieldScore !== 'all' && _filterFieldKey) {
+      if (!isMatch) { card.classList.add('rc-hidden'); return; }
+      const fs = res.scores[_filterFieldKey];
+      const fp = fs != null ? Math.round(fs * 100) : null;
+      if (fp === null) { card.classList.add('rc-hidden'); return; }
+      if (_filterFieldScore === 'vhigh' && fp < 90)                { card.classList.add('rc-hidden'); return; }
+      if (_filterFieldScore === 'high'  && (fp < 75 || fp >= 90))  { card.classList.add('rc-hidden'); return; }
+      if (_filterFieldScore === 'mid'   && (fp < 50 || fp >= 75))  { card.classList.add('rc-hidden'); return; }
+      if (_filterFieldScore === 'low'   && fp >= 50)               { card.classList.add('rc-hidden'); return; }
+    }
+
+    if (_filterText) {
+      const haystack = _filterTextCol !== ''
+        ? (res.rowA[parseInt(_filterTextCol)] || '').toLowerCase()
+        : res.rowA.join('\t').toLowerCase();
+      if (!haystack.includes(_filterText)) { card.classList.add('rc-hidden'); return; }
+    }
+
+    card.classList.remove('rc-hidden');
+    visible++;
+  });
+
+  // Deselect cards that are now hidden
+  [..._selectedIndices].forEach(i => {
+    const card = document.querySelector(`.rcard[data-row-idx="${i}"]`);
+    if (card && card.classList.contains('rc-hidden')) {
+      _selectedIndices.delete(i);
+      card.classList.remove('selected');
+      const cb = document.getElementById(`chk_${i}`);
+      if (cb) cb.checked = false;
+    }
+  });
+
+  const remaining = lastResults.length - _committedIndices.size;
+  const el = $('filter-visible-count');
+  if (el) el.textContent = `${visible} of ${remaining} shown`;
+
+  // Re-order cards in the container according to _sortOrder
+  if (_sortOrder !== 'original') {
+    const container = $('result-cards');
+    if (container) {
+      const allCards = [...container.querySelectorAll('.rcard')];
+      allCards.sort((a, b) => {
+        const ia = parseInt(a.dataset.rowIdx), ib = parseInt(b.dataset.rowIdx);
+        const ra = lastResults[ia] || {}, rb = lastResults[ib] || {};
+        const sa = ra.overall || 0, sb = rb.overall || 0;
+        return _sortOrder === 'score-asc' ? sa - sb : sb - sa;
+      });
+      allCards.forEach(c => container.appendChild(c));
+    }
+  }
+
+  updateBulkBar();
+  updateCommitCounts();
+}
+
+function setSort(val) {
+  _sortOrder = val;
+  applyFilters();
+}
+
+function updateCommitCounts() {
+  let nConfirm = 0, nNew = 0;
+  lastResults.forEach((res, i) => {
+    if (_committedIndices.has(i)) return;
+    const sel = $(`dec_${i}`);
+    if (!sel) return;
+    if (sel.value === 'confirm') nConfirm++;
+    else if (sel.value === 'new') nNew++;
+  });
+  const cb = $('commitConfirmBtn'), nb = $('commitNewBtn'), ab = $('commitAllBtn');
+  if (cb) { cb.textContent = `Commit Confirmed (${nConfirm})`; cb.disabled = nConfirm === 0; }
+  if (nb) { nb.textContent = `Commit New (${nNew})`;           nb.disabled = nNew === 0; }
+  if (ab) { ab.textContent = `Commit All (${nConfirm + nNew})`; ab.disabled = (nConfirm + nNew) === 0; }
+  const nPending = lastResults.filter((_, i) => !_committedIndices.has(i)).length;
+  const pb = $('copyPendingBtn');
+  if (pb) { pb.textContent = `Copy Pending (${nPending})`; pb.style.display = nPending > 0 ? '' : 'none'; }
+}
+
+function copyUncommitted() {
+  const pending = lastResults.filter((_, i) => !_committedIndices.has(i));
+  if (!pending.length) return;
+  const escape = v => {
+    const s = v == null ? '' : String(v);
+    return (s.includes('\t') || s.includes('\n') || s.includes('"')) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const lines = [tA.headers, ...pending.map(r => r.rowA)].map(row => row.map(escape).join('\t'));
+  const tsv = lines.join('\n');
+  const btn = $('copyPendingBtn');
+  const prev = btn ? btn.textContent : '';
+  const finish = () => { if (btn) { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = prev; }, 1800); } };
+  navigator.clipboard.writeText(tsv).then(finish).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = tsv; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    finish();
+  });
+}
+
+function showCommitToast(msg) {
+  const t = $('commitToast');
+  if (!t) return;
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 4500);
+}
+
+function updateDecStyle(sel) {
+  const v = sel.value;
+  sel.style.background   = v === 'confirm' ? '#e6f7f0' : v === 'new' ? '#f0f7ff' : '#f5f5f0';
+  sel.style.color        = v === 'confirm' ? '#0f6e56' : v === 'new' ? '#1e40af' : '#aaa';
+  sel.style.borderColor  = v === 'confirm' ? '#9fe1cb' : v === 'new' ? '#bfdbfe' : '#e2e1db';
+  if (_dbMode) {
+    const y = window.scrollY;
+    applyFilters();
+    window.scrollTo(0, y);
+  }
+}
+
+function generateUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
+function commitImport(scope) {
+  // scope: 'confirm' | 'new' | 'all'
+  const year = parseInt($('importYear').value, 10);
+  if (!year || year < 2000) { alert('Please enter a valid period year in the Import Target section.'); return; }
+  if (!lastResults.length)  { alert('Run the lookup first.'); return; }
+
+  // Disable buttons and show busy state while processing
+  const _commitBtns = ['commitConfirmBtn','commitNewBtn','commitAllBtn'].map($).filter(Boolean);
+  const _commitBtnLabels = _commitBtns.map(b => b.textContent);
+  _commitBtns.forEach(b => { b.disabled = true; b.textContent = '⏳ Committing…'; });
+
+  if (_uniqueCongNames.length > 0) {
+    const anyMapped = _uniqueCongNames.some((_, i) => { const s = $(`congmap_${i}`); return s && s.value; });
+    if (!anyMapped) { alert('Please map at least one congregation in the Congregation Mapping section.'); return; }
+  }
+
+  const db = getDatabase();
+  if (!db.Affiliation)  db.Affiliation  = [];
+  if (!db.Member)       db.Member       = [];
+  if (!db.Congregation) db.Congregation = [];
+  if (!db.Presbytery)   db.Presbytery   = [];
+
+  // Create any __new__ congregations before the main loop so getRowCongID resolves correctly
+  let congsCreated = 0;
+  const presID = $('importPresbytery').value;
+  const _newCongsToSync = [], _newMembersToSync = [], _updatedMembersToSync = [], _newAffilsToSync = [];
+  _uniqueCongNames.forEach((importName, idx) => {
+    const sel = $(`congmap_${idx}`);
+    if (!sel || sel.value !== '__new__') return;
+    const newCong = {
+      congregationID: generateUUID(),
+      name: importName,
+      presbyteryID: presID ? Number(presID) : null,
+      lastModified: '', lastModifiedBy: ''
+    };
+    db.Congregation.push(newCong);
+    _newCongsToSync.push(newCong);
+    if (_dbRaw && Array.isArray(_dbRaw.Congregation)) _dbRaw.Congregation.push(newCong);
+    // Add the new congregation as an option before selecting it — setting select.value
+    // to a UUID that isn't already an <option> would silently fall back to "" in all browsers.
+    const newOpt = document.createElement('option');
+    newOpt.value = newCong.congregationID;
+    newOpt.textContent = newCong.name;
+    sel.appendChild(newOpt);
+    sel.value = newCong.congregationID; // replace sentinel with real ID
+    const badge = $(`congbadge_${idx}`);
+    if (badge) { badge.textContent = '✓ Created'; badge.classList.remove('pending'); }
+    const score = $(`congscore_${idx}`);
+    if (score) score.style.display = 'none';
+    congsCreated++;
+  });
+
+  let confirmed = 0, added = 0, alreadyExisted = 0, noCong = 0, skipped = 0;
+  const nowCommitted = [];
+
+  lastResults.forEach((res, i) => {
+    if (_committedIndices.has(i)) return; // already committed
+    const sel = $(`dec_${i}`);
+    const dec = sel ? sel.value : 'skip';
+
+    // scope filter: only process rows matching the requested scope
+    if (scope === 'confirm' && dec !== 'confirm') return;
+    if (scope === 'new'     && dec !== 'new')     return;
+    if (dec === 'skip') { skipped++; return; }
+
+    const congID = getRowCongID(res.rowA);
+    if (!congID) { noCong++; return; }
+
+    // Resolve congregation + presbytery once — used for both the affiliation record and the sheet member payload
+    const congObj = db.Congregation.find(c => String(c.congregationID) === String(congID)) || {};
+    const presObj = db.Presbytery.find(p => String(p.presbyteryID) === String(congObj.presbyteryID)) || {};
+    const sheetCongFields = {
+      CongregationID: congID,
+      PresbyteryID:   congObj.presbyteryID || '',
+      Congregation:   congObj.name         || '',
+      Presbytery:     presObj.name         || ''
+    };
+
+    if (dec === 'confirm' && res.rowB) {
+      const memberID = (res.rowB[0] || '').replace(/"/g, '').trim();
+      const member   = db.Member.find(m => m.memberID === memberID);
+      if (!member) { skipped++; return; }
+
+      // Capture old state for the update diff
+      const oldMemberSnap = { ...member };
+
+      // Update member record with import values where provided.
+      // Identity fields (surname, name, dob) are only updated when the import value
+      // closely matches the stored value — a large divergence means the fuzzy match
+      // was likely wrong, and overwriting would corrupt the existing member record.
+      const impTitle   = getVal(res.rowA, 'mapA_title')   || '';
+      const impSurname = getVal(res.rowA, 'mapA_surname')  || '';
+      const impName    = getVal(res.rowA, 'mapA_name')     || '';
+      const impDob     = getVal(res.rowA, 'mapA_dob')      || '';
+      if (impTitle) member.title = impTitle;
+      // Only update surname/name/dob if the import value is a close match (≥70%)
+      // to what is already stored — prevents a bad fuzzy match from corrupting the record.
+      if (impSurname && sim(impSurname, member.surname || '', 'levenshtein') >= 0.70) member.surname = impSurname;
+      if (impName    && sim(impName,    member.name    || '', 'levenshtein') >= 0.70) member.name    = impName;
+      if (impDob     && normalizeDate(impDob) === normalizeDate(member.dob  || ''))  member.dob     = impDob;
+      _updatedMembersToSync.push({ newRec: { ...member, ...sheetCongFields }, oldRec: oldMemberSnap });
+
+      const exists = db.Affiliation.some(a =>
+        a.memberID === memberID &&
+        String(a.congregationID) === String(congID) &&
+        Number(a.yearRegistered) === year
+      );
+      if (exists) { alreadyExisted++; nowCommitted.push(i); return; }
+      const newConfirmedAff = {
+        affiliationID: generateUUID(), memberID, congregationID: congID, yearRegistered: year,
+        title: member.title||'', surname: member.surname||'', name: member.name||'',
+        dob: member.dob||'', gender: member.gender||'',
+        congregationName: congObj.name||'', presbyteryName: presObj.name||'',
+        lastModified: '', lastModifiedBy: ''
+      };
+      db.Affiliation.push(newConfirmedAff);
+      _newAffilsToSync.push({
+        affiliationID: newConfirmedAff.affiliationID, memberID, congregationID: congID, yearRegistered: year,
+        title: newConfirmedAff.title, surname: newConfirmedAff.surname, name: newConfirmedAff.name,
+        dob: newConfirmedAff.dob, gender: newConfirmedAff.gender,
+        Congregation: congObj.name||'', Presbytery: presObj.name||'',
+        lastModified: '', lastModifiedBy: ''
+      });
+      confirmed++;
+      nowCommitted.push(i);
+
+    } else if (dec === 'new') {
+      const rowA    = res.rowA;
+      const title   = getVal(rowA, 'mapA_title')   || '';
+      const surname = getVal(rowA, 'mapA_surname')  || '';
+      const name    = getVal(rowA, 'mapA_name')     || '';
+      const dob     = getVal(rowA, 'mapA_dob')      || '';
+      const gender  = getVal(rowA, 'mapA_gender')   || '';
+      if (!surname || !name) { skipped++; return; }
+      // When the user marks a row as "new", always create a new member record.
+      // The only exception is a 100% identical record (same surname, name, normalised DOB,
+      // and gender) — that is a true duplicate and should not be duplicated in the database.
+      const normDob = normalizeDate(dob);
+      const exactMatch = db.Member.find(m =>
+        m.surname.toLowerCase() === surname.toLowerCase() &&
+        m.name.toLowerCase()    === name.toLowerCase() &&
+        normalizeDate(m.dob)    === normDob &&
+        m.gender.toLowerCase()  === gender.toLowerCase()
+      );
+      let member;
+      if (exactMatch) {
+        // 100% identical — link to existing record to avoid a true duplicate
+        member = exactMatch;
+        if (title) member.title = title;
+      } else {
+        // Respects the user's explicit "new" decision — always create a fresh member
+        member = { memberID: generateUUID(), title, surname, name, dob, gender, lastModified: '', lastModifiedBy: '' };
+        db.Member.push(member);
+        _newMembersToSync.push({ ...member, ...sheetCongFields });
+      }
+
+      const exists = db.Affiliation.some(a =>
+        a.memberID === member.memberID &&
+        String(a.congregationID) === String(congID) &&
+        Number(a.yearRegistered) === year
+      );
+      if (!exists) {
+        const newAff = {
+          affiliationID: generateUUID(), memberID: member.memberID, congregationID: congID, yearRegistered: year,
+          title: member.title||'', surname: member.surname||'', name: member.name||'',
+          dob: member.dob||'', gender: member.gender||'',
+          congregationName: congObj.name||'', presbyteryName: presObj.name||'',
+          lastModified: '', lastModifiedBy: ''
+        };
+        db.Affiliation.push(newAff);
+        _newAffilsToSync.push({
+          affiliationID: newAff.affiliationID, memberID: member.memberID, congregationID: congID, yearRegistered: year,
+          title: newAff.title, surname: newAff.surname, name: newAff.name,
+          dob: newAff.dob, gender: newAff.gender,
+          Congregation: congObj.name||'', Presbytery: presObj.name||'',
+          lastModified: '', lastModifiedBy: ''
+        });
+        added++;
+      } else { alreadyExisted++; }
+      nowCommitted.push(i);
+    }
+  });
+
+  // Use saveDatabase so the write goes through the shared layer
+  if (typeof saveDatabase === 'function') {
+    saveDatabase(db);
+  } else {
+    localStorage.setItem('foyDB', JSON.stringify(db));
+  }
+
+  // Push all records to Google Sheet in a single batch request — one lock acquisition,
+  // no per-record contention regardless of commit size.
+  if (typeof getSheetURL === 'function' && getSheetURL()) {
+    const _changedBy = (typeof getCurrentUserName === 'function') ? getCurrentUserName() : 'unknown';
+    const _items = [];
+    const _recName = (r, yr) => ((r.surname||'') + ', ' + (r.name||'') + (yr ? ' (' + yr + ')' : '')).replace(/^,\s*/, '');
+
+    _newCongsToSync.forEach(c => _items.push({
+      action: 'addCongregation', record: c,
+      changes: { name: c.name, presbyteryID: c.presbyteryID }, recordName: c.name || ''
+    }));
+    _newMembersToSync.forEach(m => _items.push({
+      action: 'addMember', record: m,
+      changes: { name: m.name, surname: m.surname }, recordName: _recName(m)
+    }));
+    _updatedMembersToSync.forEach(({ newRec, oldRec }) => {
+      const diff = (typeof computeDiff === 'function') ? computeDiff(oldRec, newRec) : {};
+      if (!Object.keys(diff).length) return;
+      _items.push({ action: 'updateMember', record: newRec, changes: diff, recordName: _recName(newRec) });
+    });
+    _newAffilsToSync.forEach(a => _items.push({
+      action: 'addAffiliation', record: a,
+      changes: { name: a.name, surname: a.surname, yearRegistered: a.yearRegistered, congregationID: a.congregationID },
+      recordName: _recName(a, a.yearRegistered)
+    }));
+
+    if (_items.length) {
+      _commitBtns.forEach(b => { b.textContent = '☁ Syncing sheet…'; });
+      fetch(getSheetURL(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ action: 'batchCommit', changedBy: _changedBy, items: _items })
+      })
+      .then(r => r.json())
+      .then(json => {
+        if (!json.success) {
+          showCommitToast(`⚠ Sheet sync warning: ${json.error || 'Unknown error'}\nData saved locally — re-sync may be needed.`);
+        }
+      })
+      .catch(err => {
+        console.warn('Batch sheet sync failed:', err);
+        showCommitToast('⚠ Sheet sync failed — data saved locally.\nCheck your connection and re-sync if needed.');
+      })
+      .finally(() => {
+        _commitBtns.forEach((b, idx) => { b.textContent = _commitBtnLabels[idx]; });
+        updateCommitCounts();
+      });
+    } else {
+      // No sheet items — restore buttons immediately
+      _commitBtns.forEach((b, idx) => { b.textContent = _commitBtnLabels[idx]; });
+      updateCommitCounts();
+    }
+  } else {
+    // No sheet configured — restore buttons immediately
+    _commitBtns.forEach((b, idx) => { b.textContent = _commitBtnLabels[idx]; });
+    updateCommitCounts();
+  }
+
+  // Mark rows as committed and hide them
+  nowCommitted.forEach(i => _committedIndices.add(i));
+  applyFilters();
+
+  // Build toast message (only shown when there's no sheet sync or sync is fire-and-forget path above)
+  const parts = [];
+  if (congsCreated)   parts.push(`🏛 ${congsCreated} congregation${congsCreated !== 1 ? 's' : ''} created`);
+  if (confirmed)      parts.push(`✓ ${confirmed} matched`);
+  if (added)          parts.push(`+ ${added} new members`);
+  if (alreadyExisted) parts.push(`⚑ ${alreadyExisted} already registered`);
+  if (noCong)         parts.push(`⚠ ${noCong} no congregation`);
+  if (!parts.length)  parts.push('Nothing to commit for this group');
+  showCommitToast(parts.join('\n'));
+}
+
+// ── Override match ────────────────────────────────────────────────────────────
+function openOverridePanel(i) {
+  // Close any other open panels first
+  document.querySelectorAll('.override-panel').forEach(p => {
+    if (p.id !== `ovp_${i}`) { p.style.display = 'none'; }
+  });
+  document.querySelectorAll('.change-match-btn').forEach(b => b.classList.remove('active'));
+
+  const panel = document.getElementById(`ovp_${i}`);
+  if (!panel) return;
+  const isOpen = panel.style.display !== 'none';
+  panel.style.display = isOpen ? 'none' : '';
+  const btn = document.getElementById(`ovbtn_${i}`);
+  if (btn) btn.classList.toggle('active', !isOpen);
+  if (!isOpen) {
+    const inp = panel.querySelector('.ovp-search');
+    if (inp) { inp.value = ''; renderOverrideList(i, ''); inp.focus(); }
+  }
+}
+
+function renderOverrideList(i, query) {
+  const listEl = document.getElementById(`ovplist_${i}`);
+  if (!listEl || !tB) return;
+  const q = query.toLowerCase().trim();
+
+  const nameColIdx    = parseInt(($('mapB_name')    || {}).value ?? '-1');
+  const surnameColIdx = parseInt(($('mapB_surname') || {}).value ?? '-1');
+  const dobColIdx     = parseInt(($('mapB_dob')     || {}).value ?? '-1');
+  const congColIdx    = parseInt(($('mapB_congregation') || {}).value ?? '-1');
+
+  const currentRef = lastResults[i] ? lastResults[i].refRowIdx : null;
+
+  const hits = [];
+  tB.rows.forEach((row, j) => {
+    const name    = nameColIdx    >= 0 ? (row[nameColIdx]    || '').trim() : '';
+    const surname = surnameColIdx >= 0 ? (row[surnameColIdx] || '').trim() : '';
+    const id      = (row[0] || '').trim();
+    const full    = `${name} ${surname} ${id}`.toLowerCase();
+    if (q && !full.includes(q)) return;
+    const dob  = dobColIdx  >= 0 ? (row[dobColIdx]  || '') : '';
+    const cong = congColIdx >= 0 ? (row[congColIdx] || '') : '';
+    hits.push({ j, name, surname, dob, cong, id });
+    if (hits.length >= 60) return;
+  });
+
+  if (!hits.length) {
+    listEl.innerHTML = '<div style="padding:8px;color:#bbb;font-size:11px;text-align:center;">No members found</div>';
+    return;
+  }
+
+  listEl.innerHTML = hits.map(m => {
+    const isCurrent = m.j === currentRef;
+    const meta = [m.dob, m.cong].filter(Boolean).join(' · ');
+    return `<div class="ovp-item${isCurrent ? ' ovp-current' : ''}" onclick="applyOverride(${i},${m.j})">
+      <div class="ovp-item-name">${m.surname ? m.surname + ', ' : ''}${m.name}${isCurrent ? ' <span style="font-size:10px;color:#0f6e56;font-weight:400;">(current match)</span>' : ''}</div>
+      ${meta ? `<div class="ovp-item-meta">${meta}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function applyOverride(i, tBRowIdx) {
+  if (!_lastRunConfig || !tB || !lastResults[i]) return;
+  const { algo, yearRows } = _lastRunConfig;
+  const res = lastResults[i];
+  const newRowB = tB.rows[tBRowIdx];
+  const scored = scoreRow(res.rowA, newRowB, algo, yearRows);
+  lastResults[i] = { ...res, rowB: newRowB, overall: scored.overall, scores: scored.scores, refRowIdx: tBRowIdx, overridden: true };
+
+  // Rebuild the card
+  rebuildCard(i);
+  applyFilters();
+  updateCommitCounts();
+}
+
+function rebuildCard(i) {
+  const card = document.querySelector(`.rcard[data-row-idx="${i}"]`);
+  if (!card || !_lastRunConfig) return;
+  const { activeCore, showYears, yearRows } = _lastRunConfig;
+  const res = lastResults[i];
+  if (!res || !res.rowB) return;
+  const { rowA, rowB, overall, scores, refRowIdx, overridden } = res;
+
+  const pct = Math.round(overall * 100);
+  const pillCls = pct >= 75 ? 'score-high' : pct >= 50 ? 'score-mid' : 'score-low';
+  const memberID = rowB[0] || '';
+  const isManualPresb = presbyMode === 'manual';
+
+  const prevDec = (document.getElementById(`dec_${i}`) || {}).value || 'confirm';
+  const chkHtml = _dbMode ? `<input type="checkbox" class="rcard-check" id="chk_${i}" onchange="toggleCardSelect(${i},this)">` : '';
+  const overrideTag = overridden ? ' <span class="ovp-override-tag">overridden</span>' : '';
+
+  let hHtml = `<div class="rcard-header">${chkHtml}<span class="rcard-ref">#${i+1}</span><span class="score-pill ${pillCls}">${pct}%</span><span style="font-size:11px;color:#aaa;">→ DB #${memberID}${overrideTag}</span><span id="ovtag_${i}"></span><span style="flex:1;"></span>`;
+  if (_dbMode) hHtml += `<select class="decision-sel" id="dec_${i}" onchange="updateDecStyle(this)"><option value="confirm"${prevDec==='confirm'?' selected':''}>Confirm match</option><option value="new"${prevDec==='new'?' selected':''}>Add as new</option><option value="skip"${prevDec==='skip'?' selected':''}>Skip</option></select>`;
+  hHtml += `<button class="change-match-btn" id="ovbtn_${i}" onclick="openOverridePanel(${i})" title="Override the fuzzy-matched member">⇄ Change</button></div>`;
+
+  let bHtml = `<div class="rcard-body"><div class="rcard-row" style="margin-bottom:2px;"><span></span><span style="font-size:9px;font-weight:700;color:#ccc;text-transform:uppercase;letter-spacing:.05em;">Import</span><span></span><span style="font-size:9px;font-weight:700;color:#ccc;text-transform:uppercase;letter-spacing:.05em;">Database</span><span></span></div>`;
+
+  activeCore.forEach(f => {
+    let valA, valB;
+    if (f.key === 'name') {
+      valA = [getVal(rowA,'mapA_name'), getVal(rowA,'mapA_surname')].filter(Boolean).join(' ');
+      valB = [getVal(rowB,'mapB_name'), getVal(rowB,'mapB_surname')].filter(Boolean).join(' ');
+    } else if (f.key === 'presbytery') {
+      valA = getPresbA(rowA);
+      valB = getVal(rowB,'mapB_presbytery');
+    } else {
+      valA = getVal(rowA,'mapA_'+f.key);
+      valB = getVal(rowB,'mapB_'+f.key);
+    }
+    const fs = scores[f.key];
+    const fp = fs != null ? Math.round(fs * 100) : null;
+    const fCls = fp == null ? '' : fp >= 75 ? 'fscore-high' : fp >= 50 ? 'fscore-mid' : 'fscore-low';
+    const diff = valA && valB && valA.toLowerCase() !== valB.toLowerCase();
+    const manualTag = (f.key === 'presbytery' && isManualPresb) ? ' <span class="override-tag">manual</span>' : '';
+    const scoreBadge = fs === null ? '<span style="font-size:10px;color:#bbb;font-style:italic;">excl.</span>' : (fp != null ? `<span class="fscore ${fCls}">${fp}%</span>` : '—');
+    bHtml += `<div class="rcard-row"><span class="rcard-label">${f.label}</span><span class="rcard-val">${valA||'—'}${manualTag}</span><span class="rcard-arr">→</span><span class="rcard-val rcard-val-b${diff?' diff':''}">${valB||'—'}</span>${scoreBadge}</div>`;
+  });
+
+  if (showYears) {
+    const yfs = scores['years'];
+    const yfp = yfs != null ? Math.round(yfs * 100) : null;
+    const yfCls = yfp == null ? '' : yfp >= 75 ? 'fscore-high' : yfp >= 50 ? 'fscore-mid' : 'fscore-low';
+    const scoreBadge = yfp != null ? `<span class="fscore ${yfCls}">${yfp}%</span>` : '—';
+    let aYears = '<div class="rcard-years">', bYears = '<div class="rcard-years">';
+    yearRows.forEach(yr => {
+      const aRaw = yr.colA !== '' ? (rowA[parseInt(yr.colA)] || '') : '';
+      const bRaw = yr.colB !== '' ? (rowB[parseInt(yr.colB)] || '') : '';
+      const aAff = isAffiliated(aRaw), bAff = isAffiliated(bRaw);
+      aYears += `<span class="affil-badge ${aAff?'affil-yes':'affil-no'}">${yr.label}</span>`;
+      bYears += `<span class="affil-badge ${aAff===bAff?(bAff?'affil-yes':'affil-no'):'affil-diff'}">${yr.label}</span>`;
+    });
+    aYears += '</div>'; bYears += '</div>';
+    bHtml += `<div class="rcard-row"><span class="rcard-label">Years</span>${aYears}<span class="rcard-arr">→</span>${bYears}${scoreBadge}</div>`;
+  }
+
+  bHtml += '</div>';
+  const ovpHtml = `<div id="ovp_${i}" class="override-panel" style="display:none;"><div class="ovp-header"><span class="ovp-title">Change matched member</span><button class="ovp-close" onclick="openOverridePanel(${i})">✕ Close</button></div><input class="ovp-search" type="text" placeholder="Search by name or surname…" oninput="renderOverrideList(${i},this.value)"><div class="ovp-list" id="ovplist_${i}"></div></div>`;
+  card.innerHTML = hHtml + bHtml + ovpHtml;
+
+  if (_dbMode) { const sel = document.getElementById(`dec_${i}`); if (sel) updateDecStyle(sel); }
+  if (_selectedIndices.has(i)) {
+    card.classList.add('selected');
+    const cb = document.getElementById(`chk_${i}`); if (cb) cb.checked = true;
+  }
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+function exportCSV() {
+  if (!lastResults.length) { alert('Run a lookup first.'); return; }
+  const yearRows   = getYearRows();
+  const activeCore = CORE_FIELDS.filter(f => f.key !== 'years' && getWeight(f.key) > 0);
+  const showYears  = getWeight('years') > 0 && yearRows.length > 0;
+
+  const headers = ['Result row', 'Reference row #', 'Overall %'];
+  activeCore.forEach(f => headers.push(f.label+' (A)', f.label+' (B)', f.label+' score %'));
+  if (showYears) yearRows.forEach(yr => headers.push(`${yr.label} (A)`, `${yr.label} (B)`, `${yr.label} match`));
+
+  const rows = [headers];
+  lastResults.forEach(({ rowA, rowB, overall, scores, rowIdx, refRowIdx }, i) => {
+    const refRowNum = refRowIdx != null ? refRowIdx + 1 : ''; // 1-indexed, blank if no match
+    const r = [i+1, refRowNum, Math.round(overall*100)];
+    activeCore.forEach(f => {
+      let valA, valB;
+      if (f.key === 'name') { valA=[getVal(rowA,'mapA_name'),getVal(rowA,'mapA_surname')].filter(Boolean).join(' '); valB=rowB?[getVal(rowB,'mapB_name'),getVal(rowB,'mapB_surname')].filter(Boolean).join(' '):''; }
+      else if (f.key === 'presbytery') { valA = getPresbA(rowA); valB = rowB ? getVal(rowB,'mapB_presbytery') : ''; }
+      else { valA=getVal(rowA,'mapA_'+f.key); valB=rowB?getVal(rowB,'mapB_'+f.key):''; }
+      const fs = scores[f.key];
+      r.push(valA, valB, fs!=null?Math.round(fs*100):'');
+    });
+    if (showYears) {
+      yearRows.forEach(yr => {
+        const aRaw = yr.colA !== '' ? (rowA[parseInt(yr.colA)] || '') : '';
+        const bRaw = rowB && yr.colB !== '' ? (rowB[parseInt(yr.colB)] || '') : '';
+        const aAff = isAffiliated(aRaw), bAff = isAffiliated(bRaw);
+        r.push(aAff?'Yes':'No', bAff?'Yes':'No', aAff===bAff?'Match':'Mismatch');
+      });
+    }
+    rows.push(r);
+  });
+
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = 'fuzzy-lookup-results.csv';
+  a.click();
+}
+</script>
+</body>
+</html>

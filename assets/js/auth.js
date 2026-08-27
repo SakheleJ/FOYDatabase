@@ -13,26 +13,24 @@ async function registerUserENC() {
     return;
   }
 
-  const db = getDatabase();
+  const structureBoxes = document.querySelectorAll('#userStructures input[type="checkbox"]:checked');
+  const structures = Array.from(structureBoxes).map(cb => cb.value).join(",");
+  const congregation = (document.getElementById("userCongregation") || {}).value || "ALL";
 
-  if (db.users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
-    document.getElementById("register-error").textContent = "Email already registered.";
+  if (!structures) {
+    document.getElementById("register-error").textContent = "Select at least one structure.";
     return;
   }
 
   const hashedPassword = await hashPassword(password);
-  const newId = db.users.length ? Math.max(...db.users.map(u => u.UserID)) + 1 : 1;
-  const presbytery   = (document.getElementById("userPresbytery")   || {}).value || "ALL";
-  const congregation = (document.getElementById("userCongregation") || {}).value || "ALL";
+  const newUser = { name, email, password: hashedPassword, role, structures, congregation };
 
-  const newUser = { UserID: newId, name, email, password: hashedPassword, role, presbytery, congregation };
-  db.users.push(newUser);
-  saveDatabase(db);
-
-  // Write the new user back to the Sheet
-  postToSheet("addUser", newUser).catch(function(err) {
-    console.warn("Sheet write for new user failed:", err.message);
-  });
+  try {
+    await postToDirectory("addUser", newUser);
+  } catch (err) {
+    document.getElementById("register-error").textContent = "Could not register user: " + err.message;
+    return;
+  }
 
   alert("Registration successful!");
 
@@ -42,7 +40,10 @@ async function registerUserENC() {
 }
 
 // -------------------- LOGIN --------------------
-async function loginENC() {
+// Two-step Directory login: authenticate against the Directory, which
+// returns the data sheet(s) ("structures") this account may use, then
+// connect to whichever one is chosen (auto-picked if there's only one).
+async function attemptLogin() {
   await initDatabase();
   const email    = document.getElementById("login-email").value.trim();
   const password = document.getElementById("login-password").value.trim();
@@ -51,102 +52,147 @@ async function loginENC() {
   const spinner  = document.getElementById("login-spinner");
 
   errorEl.textContent = "";
+  if (btnText) btnText.textContent = "Checking account…";
+  if (spinner) spinner.classList.remove("d-none");
 
-  const sheetURL = getSheetURL();
+  const hashedPassword = await hashPassword(password);
+  let result;
 
-  // Step 1 — Pre-fetch users from Sheet so new accounts created elsewhere are available.
-  // Falls back silently to cached users if Sheet is unreachable (offline support).
-  if (sheetURL) {
-    if (btnText) btnText.textContent = "Checking account…";
-    if (spinner) spinner.classList.remove("d-none");
-    try {
-      const resp = await fetch(sheetURL + "?collection=users");
-      const json = await resp.json();
-      if (json.success && json.data && json.data.users && json.data.users.length) {
-        const existingDB = getDatabase();
-        existingDB.users = json.data.users;
-        saveDatabase(existingDB);
-      }
-    } catch (e) {
-      // Sheet unreachable — cached users will be used; login still works offline
+  try {
+    const resp = await fetch(DIRECTORY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({ action: "login", email, password: hashedPassword })
+    });
+    result = await resp.json();
+
+    if (result.success) {
+      // Cache this device's own successful login for offline re-auth —
+      // never the full user table, just this one account's own result.
+      localStorage.setItem("foyDirectoryCache", JSON.stringify({
+        email: email.toLowerCase(), password: hashedPassword,
+        user: result.user, structures: result.structures
+      }));
     }
-    if (btnText) btnText.textContent = "Login";
-    if (spinner) spinner.classList.add("d-none");
+  } catch (e) {
+    // Directory unreachable — fall back to this device's own cached login
+    const cached = JSON.parse(localStorage.getItem("foyDirectoryCache") || "null");
+    if (cached && cached.email === email.toLowerCase() && cached.password === hashedPassword) {
+      result = { success: true, user: cached.user, structures: cached.structures };
+    } else {
+      result = { success: false, error: "Could not reach the Directory, and no offline login is cached for this account." };
+    }
   }
 
-  // Step 2 — Check credentials against the now-current user list
-  const hashedPassword = await hashPassword(password);
-  const db   = getDatabase();
-  const user = db.users.find(
-    u => u.email.toLowerCase() === email.toLowerCase() && u.password === hashedPassword
-  );
+  if (btnText) btnText.textContent = "Login";
+  if (spinner) spinner.classList.add("d-none");
 
-  if (!user) {
-    errorEl.textContent = "Invalid email or password.";
+  if (!result.success) {
+    errorEl.textContent = result.error || "Invalid email or password.";
     return;
   }
 
-  // Ensure scope fields are present (default to ALL if not set in Sheet)
-  if (!user.presbytery)   user.presbytery   = "ALL";
-  if (!user.congregation) user.congregation = "ALL";
+  const structures = result.structures || [];
+  if (structures.length === 0) {
+    errorEl.textContent = "Your account has no structures assigned yet. Contact an admin.";
+    return;
+  }
 
-  localStorage.setItem("currentUser", JSON.stringify(user));
+  if (structures.length === 1) {
+    completeLogin(result.user, structures[0]);
+    return;
+  }
 
-  // Step 3 — Full data sync now that the user is authenticated
-  if (sheetURL) {
-    if (btnText) btnText.textContent = "Syncing data…";
-    if (spinner) spinner.classList.remove("d-none");
+  showStructurePicker(result.user, structures);
+}
 
-    try {
-      await syncFromSheet(sheetURL, { presbytery: user.presbytery || "ALL", congregation: user.congregation || "ALL" });
-    } catch (err) {
-      if (btnText) btnText.textContent = "Login";
-      if (spinner) spinner.classList.add("d-none");
-      const proceed = confirm(
-        "⚠️ Could not sync from Google Sheet:\n" + err.message +
-        "\n\nContinue with locally cached data?"
-      );
-      if (!proceed) {
-        localStorage.removeItem("currentUser");
-        return;
-      }
+// Populates and shows the structure-picker modal — only reached when a
+// user has more than one structure to choose from.
+function showStructurePicker(user, structures) {
+  const list = document.getElementById("structure-picker-list");
+  list.innerHTML = "";
+  structures.forEach(s => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "list-group-item list-group-item-action";
+    btn.textContent = s.name;
+    btn.onclick = () => completeLogin(user, s);
+    list.appendChild(btn);
+  });
+  bootstrap.Modal.getOrCreateInstance(document.getElementById("structurePickerModal")).show();
+}
+
+// Finalizes login once the target structure is known: connects the app to
+// that structure's data sheet exactly as if its URL had been pasted in.
+async function completeLogin(user, structure) {
+  const errorEl = document.getElementById("register-error");
+
+  localStorage.setItem("currentUser", JSON.stringify(Object.assign({}, user, {
+    structure: { name: structure.name, url: structure.url }
+  })));
+  saveSheetURL(structure.url);
+
+  try {
+    await syncFromSheet(structure.url, { presbytery: "ALL", congregation: user.congregation || "ALL" });
+  } catch (err) {
+    const proceed = confirm(
+      "⚠️ Could not sync from Google Sheet:\n" + err.message +
+      "\n\nContinue with locally cached data?"
+    );
+    if (!proceed) {
+      localStorage.removeItem("currentUser");
+      if (errorEl) errorEl.textContent = "";
+      return;
     }
   }
 
   window.location.href = "dashboard.html";
 }
 // -------------------- SCOPE DROPDOWNS (Register User modal) --------------------
-// Populates the Presbytery and Congregation selects with live DB values.
+// Populates the Structures checkbox list (from the Directory) and the
+// Congregation select (from the currently-connected data sheet).
 // Called when the registerUserModal is shown.
-function populateUserScopeDropdowns() {
-  const db = getDatabase();
-  const presbyteries  = db.Presbytery   || [];
-  const congregations = db.Congregation || [];
-
-  const presSelect  = document.getElementById("userPresbytery");
-  const congSelect  = document.getElementById("userCongregation");
-  if (!presSelect || !congSelect) return;
-
-  // Populate presbyteries
-  presSelect.innerHTML = '<option value="ALL">ALL</option>' +
-    presbyteries.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
-
-  // Populate congregations (all initially)
-  function fillCongregations(filteredPresName) {
-    const filtered = filteredPresName && filteredPresName !== "ALL"
-      ? congregations.filter(c => {
-          const pres = presbyteries.find(p => String(p.presbyteryID) === String(c.presbyteryID));
-          return pres && pres.name === filteredPresName;
-        })
-      : congregations;
+async function populateUserScopeDropdowns() {
+  const congSelect = document.getElementById("userCongregation");
+  if (congSelect) {
+    const congregations = (getDatabase().Congregation) || [];
     congSelect.innerHTML = '<option value="ALL">ALL</option>' +
-      filtered.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+      congregations.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
   }
 
-  fillCongregations(null);
+  const structuresBox = document.getElementById("userStructures");
+  if (!structuresBox) return;
 
-  // Re-filter congregations when presbytery changes
-  presSelect.onchange = () => fillCongregations(presSelect.value);
+  structuresBox.innerHTML = '<span class="text-muted small">Loading…</span>';
+  try {
+    const resp = await fetch(DIRECTORY_URL + "?action=structures");
+    const json = await resp.json();
+    const structures = (json.success && json.structures) ? json.structures : [];
+
+    const allOption = `
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" value="ALL" id="structure-ALL">
+        <label class="form-check-label fw-semibold" for="structure-ALL">ALL (every structure, including future ones)</label>
+      </div>`;
+
+    structuresBox.innerHTML = allOption + (structures.length
+      ? structures.map(s => `
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" value="${s.name}" id="structure-${s.name}">
+            <label class="form-check-label" for="structure-${s.name}">${s.name}</label>
+          </div>`).join('')
+      : '<span class="text-muted small">No individual structures found yet — add one in the Directory sheet.</span>');
+
+    // Picking ALL supersedes individual picks — disable them for clarity.
+    const allBox = document.getElementById("structure-ALL");
+    const otherBoxes = () => structuresBox.querySelectorAll('input[type="checkbox"]:not(#structure-ALL)');
+    allBox.onchange = () => otherBoxes().forEach(cb => {
+      cb.disabled = allBox.checked;
+      if (allBox.checked) cb.checked = false;
+    });
+  } catch (e) {
+    structuresBox.innerHTML = '<span class="text-danger small">Could not load structures from the Directory.</span>';
+  }
 }
 
 // Wire up dropdown population whenever the modal opens
