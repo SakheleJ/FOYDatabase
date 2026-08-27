@@ -75,7 +75,7 @@ function populateAddFormCongregations(db, selectedCongID) {
     const cur = selEl.value;
     selEl.innerHTML = '';
     const def = document.createElement('option');
-    def.value = ''; def.textContent = 'All Presbyteries';
+    def.value = ''; def.textContent = '-- Select Presbytery --';
     selEl.appendChild(def);
     presbyteries.forEach(p => {
       const opt = document.createElement('option');
@@ -380,50 +380,57 @@ function selectMember(member, affiliation, congregation, presbytery, opts) {
   detailsPanel.innerHTML = `
     <div class="card p-3 mb-2">
       <h6 class="mb-2">Edit Member</h6>
-      <form id="memberDetailForm" class="row g-2">
-        <div class="col-6">
+      <form id="memberDetailForm" class="row g-2" novalidate>
+        <div class="col-6 col-md-3">
           <label class="form-label small">Presbytery</label>
-          <select id="detailPresbytery" class="form-select form-select-sm"></select>
+          <select id="detailPresbytery" class="form-select form-select-sm" required></select>
+          <div class="invalid-feedback">Please select a presbytery.</div>
         </div>
-        <div class="col-6">
+        <div class="col-6 col-md-4">
           <label class="form-label small">Congregation</label>
-          <select id="detailCongregation" class="form-select form-select-sm"></select>
+          <select id="detailCongregation" class="form-select form-select-sm" required></select>
+          <div class="invalid-feedback">Please select a congregation.</div>
         </div>
-        <div class="col-3">
+        <div class="col-6 col-md-2">
           <label class="form-label small">Title</label>
           <input id="detailTitle" class="form-control form-control-sm" value="${member.title || ''}" />
         </div>
-        <div class="col-4">
+        <div class="col-6 col-md-3">
           <label class="form-label small">Surname</label>
-          <input id="detailSurname" class="form-control form-control-sm" value="${member.surname || ''}" />
+          <input id="detailSurname" class="form-control form-control-sm" value="${member.surname || ''}" required />
+          <div class="invalid-feedback">Surname is required.</div>
         </div>
-        <div class="col-5">
+        <div class="col-6 col-md-3">
           <label class="form-label small">Name</label>
-          <input id="detailName" class="form-control form-control-sm" value="${member.name || ''}" />
+          <input id="detailName" class="form-control form-control-sm" value="${member.name || ''}" required />
+          <div class="invalid-feedback">Name is required.</div>
         </div>
-        <div class="col-5">
+        <div class="col-6 col-md-2">
           <label class="form-label small">Date of Birth</label>
-          <input id="detailDOB" type="date" class="form-control form-control-sm" value="${formatDate(member.dob)}" />
+          <input id="detailDOB" type="date" class="form-control form-control-sm" value="${formatDate(member.dob)}" required />
+          <div class="invalid-feedback">Date of birth is required.</div>
         </div>
-        <div class="col-4">
+        <div class="col-6 col-md-2">
           <label class="form-label small">Gender</label>
-          <select id="detailGender" class="form-select form-select-sm">
-            <option value="">Select</option>
+          <select id="detailGender" class="form-select form-select-sm" required>
+            <option value="">-- Select Gender --</option>
             <option value="Male" ${member.gender === 'Male' ? 'selected' : ''}>Male</option>
             <option value="Female" ${member.gender === 'Female' ? 'selected' : ''}>Female</option>
             <option value="Other" ${member.gender === 'Other' ? 'selected' : ''}>Other</option>
           </select>
+          <div class="invalid-feedback">Please select a gender.</div>
         </div>
-        <div class="col-3">
+        <div class="col-6 col-md-2">
           <label class="form-label small">Period</label>
-          <input id="detailPeriod" type="number" class="form-control form-control-sm" value="${periodVal}" />
+          <input id="detailPeriod" type="number" class="form-control form-control-sm" value="${periodVal}" min="2000" required />
+          <div class="invalid-feedback">Please enter a valid period year.</div>
         </div>
         <div class="col-12 d-flex gap-2 flex-wrap align-items-center">
-          <button type="button" id="saveMemberDetail" class="btn btn-primary btn-sm">Save Changes</button>
+          <button type="submit" id="saveMemberDetail" class="btn btn-primary btn-sm">Save Changes</button>
           <button type="button" id="addAffiliationBtn" class="btn btn-success btn-sm">
             <i class="bi bi-plus-circle me-1"></i>Add Period
           </button>
-          <button type="button" id="deleteMemberBtn" class="btn btn-outline-danger btn-sm ms-auto" style="font-size:0.75rem;">
+          <button type="button" id="deleteMemberBtn" class="btn btn-outline-danger btn-sm ms-auto">
             <i class="bi bi-person-x me-1"></i>Delete Member
           </button>
         </div>
@@ -445,7 +452,15 @@ function selectMember(member, affiliation, congregation, presbytery, opts) {
     updateCongregationDropdown(congSelect, allCongregations, presSelect.value, null);
   });
 
-  document.getElementById('saveMemberDetail')?.addEventListener('click', () => {
+  const detailForm = document.getElementById('memberDetailForm');
+  detailForm?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!detailForm.checkValidity()) {
+      detailForm.classList.add('was-validated');
+      showToast('Please fill out all required fields.', 'warning');
+      return;
+    }
+
     const updTitle    = document.getElementById('detailTitle').value.trim();
     const updSurname  = document.getElementById('detailSurname').value.trim();
     const updName     = document.getElementById('detailName').value.trim();
@@ -453,10 +468,6 @@ function selectMember(member, affiliation, congregation, presbytery, opts) {
     const updGender   = document.getElementById('detailGender').value;
     const updPeriod   = parseInt(document.getElementById('detailPeriod').value, 10);
     const updCong     = document.getElementById('detailCongregation').value;
-
-    if (!updSurname || !updName || !updDob || !updGender || Number.isNaN(updPeriod) || !updCong) {
-      showToast('Please fill out all required fields.', 'warning'); return;
-    }
 
     const dbS = getDatabase();
     const mIdx = (dbS.Member || []).findIndex(x => x.memberID === member.memberID);
@@ -687,43 +698,230 @@ function deleteMember(memberID) {
 }
 
 // -------------------- REGISTER --------------------
-function registerMemberFromForm(e) {
-  e.preventDefault();
+
+// Finds an existing Member that is an exact match on identity fields (case-insensitive name/surname).
+function findExactMemberMatch(members, fields) {
+  return (members || []).find(m =>
+    m.surname.toLowerCase() === fields.surname.toLowerCase() &&
+    m.name.toLowerCase() === fields.name.toLowerCase() &&
+    m.dob === fields.dob && m.gender === fields.gender
+  );
+}
+
+// Resolves the Member to attach an Affiliation to: reuses `existingMember` if given (an exact
+// match, or a fuzzy match the user explicitly confirmed), otherwise creates + pushes a new one
+// into `membersArray`. Does not save the database — caller is responsible for calling
+// saveDatabase() once all member/affiliation records for the current operation are in place.
+function resolveMember(membersArray, fields, existingMember) {
+  if (existingMember) return { member: existingMember, isNew: false };
+  const member = { memberID: generateGUID(), title: fields.title || '', surname: fields.surname, name: fields.name, dob: fields.dob, gender: fields.gender };
+  membersArray.push(member);
+  return { member, isNew: true };
+}
+
+let _pendingMatchChoiceFn = null;
+let _pendingResolveConfirmFn = null;
+const MAX_MATCH_CARDS = 6; // sane display cap if an unusual number of candidates score above threshold
+
+const MEMBER_DIFF_FIELDS = [
+  { key: 'title',   label: 'Title' },
+  { key: 'surname', label: 'Surname' },
+  { key: 'name',    label: 'Name' },
+  { key: 'dob',     label: 'Date of Birth' },
+  { key: 'gender',  label: 'Gender' },
+];
+
+function normalizeForCompare(v) { return (v || '').toString().trim().toLowerCase(); }
+
+// Fields where the just-typed input differs from an existing member's stored value.
+function diffFields(fields, member) {
+  return MEMBER_DIFF_FIELDS.filter(f => normalizeForCompare(fields[f.key]) !== normalizeForCompare(member[f.key]));
+}
+
+function matchBadgeClass(pct) {
+  return pct >= 90 ? 'bg-success' : pct >= 75 ? 'bg-warning text-dark' : 'bg-secondary';
+}
+
+function setPossibleMatchView(view) {
+  const cardsView   = document.getElementById('possibleMatchCardsView');
+  const resolveView = document.getElementById('possibleMatchResolveView');
+  const backBtn      = document.getElementById('possibleMatchBackBtn');
+  const confirmBtn   = document.getElementById('possibleMatchConfirmLinkBtn');
+  const createNewBtn = document.getElementById('createNewMemberBtn');
+  const inResolve = view === 'resolve';
+  cardsView?.classList.toggle('d-none', inResolve);
+  resolveView?.classList.toggle('d-none', !inResolve);
+  backBtn?.classList.toggle('d-none', !inResolve);
+  confirmBtn?.classList.toggle('d-none', !inResolve);
+  createNewBtn?.classList.toggle('d-none', inResolve);
+}
+
+// Shows the "possible existing member" confirmation modal as one card per candidate (each with
+// its own Link button), a persistent summary of what was just typed for direct comparison, and —
+// if the chosen candidate's stored details differ from the input — a per-field "which value do I
+// keep" step before finalizing, instead of silently keeping (or silently overwriting) the record.
+// onResolve(resolution) fires with either null (create new) or { member, updates }, where
+// `updates` is a plain object of field:newValue overrides to apply, or null if nothing changed.
+function openPossibleMatchModal(fields, candidates, onResolve) {
+  const shown = candidates.slice(0, MAX_MATCH_CARDS);
+
+  function finalize(resolution) {
+    _pendingMatchChoiceFn = null;
+    _pendingResolveConfirmFn = null;
+    try { bootstrap.Modal.getInstance(document.getElementById('possibleMatchModal'))?.hide(); } catch (e) {}
+    onResolve(resolution);
+  }
+
+  const yourInputEl = document.getElementById('possibleMatchYourInput');
+  if (yourInputEl) {
+    const dobDisplay = fields.dob ? formatDate(fields.dob) : '—';
+    yourInputEl.innerHTML = `<span class="text-muted small text-uppercase fw-semibold">You entered</span><br><strong>${fields.title ? fields.title + ' ' : ''}${fields.surname}, ${fields.name}</strong> — DOB ${dobDisplay}, ${fields.gender || '—'}`;
+  }
+
+  const intro = document.getElementById('possibleMatchIntro');
+  if (intro) intro.textContent = `Found ${shown.length} possible existing match${shown.length > 1 ? 'es' : ''}. Choose one to link this registration to, or create a new member.`;
+
+  const cardsEl = document.getElementById('possibleMatchCards');
+  if (cardsEl) {
+    cardsEl.innerHTML = shown.map((c, i) => {
+      const m = c.member;
+      const pct = Math.round(c.overall * 100);
+      const dobDisplay = m.dob ? formatDate(m.dob) : '—';
+      const diffs = new Set(diffFields(fields, m).map(f => f.key));
+      const mark = (key, text) => diffs.has(key) ? `<span class="text-danger" title="Differs from what you entered">${text} ⚠</span>` : text;
+      return `
+        <div class="col-12 col-md-6">
+          <div class="card h-100 shadow-sm">
+            <div class="card-body py-2 px-3">
+              <div class="d-flex justify-content-between align-items-start gap-2">
+                <div>
+                  <div class="fw-semibold">${mark('title', m.title ? m.title + ' ' : '')}${mark('surname', m.surname)}, ${mark('name', m.name)}</div>
+                  <div class="text-muted small">DOB ${mark('dob', dobDisplay)} &middot; ${mark('gender', m.gender || '—')}</div>
+                </div>
+                <span class="badge ${matchBadgeClass(pct)}">${pct}%</span>
+              </div>
+              ${diffs.size > 0 ? `<div class="text-danger small mt-1"><i class="bi bi-exclamation-triangle me-1"></i>${diffs.size} field${diffs.size > 1 ? 's' : ''} differ from what you entered</div>` : ''}
+              <button type="button" class="btn btn-sm btn-primary w-100 mt-2 link-candidate-btn" data-idx="${i}">Link to this person</button>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  _pendingMatchChoiceFn = (idx) => {
+    if (idx === null) { finalize(null); return; } // Create New Member
+    const candidate = shown[idx].member;
+    const diffs = diffFields(fields, candidate);
+
+    if (diffs.length === 0) { finalize({ member: candidate, updates: null }); return; }
+
+    const resolveFieldsEl = document.getElementById('possibleMatchResolveFields');
+    if (resolveFieldsEl) {
+      resolveFieldsEl.innerHTML = diffs.map(f => `
+        <div class="mb-2 p-2 border rounded">
+          <div class="fw-semibold small mb-1">${f.label}</div>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="resolve_${f.key}" id="resolve_${f.key}_existing" value="existing" checked>
+            <label class="form-check-label small" for="resolve_${f.key}_existing">Keep existing: <strong>${candidate[f.key] || '—'}</strong></label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="resolve_${f.key}" id="resolve_${f.key}_new" value="new">
+            <label class="form-check-label small" for="resolve_${f.key}_new">Use what you entered: <strong>${fields[f.key] || '—'}</strong></label>
+          </div>
+        </div>`).join('');
+    }
+
+    _pendingResolveConfirmFn = () => {
+      const updates = {};
+      diffs.forEach(f => {
+        const chosen = document.querySelector(`input[name="resolve_${f.key}"]:checked`);
+        if (chosen && chosen.value === 'new') updates[f.key] = fields[f.key];
+      });
+      finalize({ member: candidate, updates: Object.keys(updates).length ? updates : null });
+    };
+
+    setPossibleMatchView('resolve');
+  };
+
+  const backBtn = document.getElementById('possibleMatchBackBtn');
+  if (backBtn) backBtn.onclick = () => setPossibleMatchView('cards');
+
+  setPossibleMatchView('cards');
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('possibleMatchModal')).show();
+}
+
+function readMemberFormFields() {
   const title   = document.getElementById("memberTitle").value.trim();
   const surname = document.getElementById("memberSurname").value.trim();
   const name    = document.getElementById("memberName").value.trim();
   const dob     = document.getElementById("memberDOB").value;
   const gender  = document.getElementById("memberGender").value;
   const year    = parseInt(document.getElementById("memberYear").value, 10);
-  const congEl  = document.getElementById("memberCongregation");
-  const cong    = (congEl && congEl.value) || localStorage.getItem("selectedCongregation") || null;
+  const presID  = document.getElementById("memberPresbytery")?.value || '';
+  const cong    = document.getElementById("memberCongregation")?.value || '';
 
-  if (!cong) { showToast("Please select a congregation.", "warning"); return; }
-  if (!surname || !name || !dob || !gender || !year) { showToast("Please complete all required fields.", "warning"); return; }
+  // Presbytery/Congregation must be explicitly chosen on the visible form — no falling back to a
+  // stale localStorage value the dropdown itself doesn't show as selected.
+  if (!presID) { showToast("Please select a presbytery.", "warning"); return null; }
+  if (!cong) { showToast("Please select a congregation.", "warning"); return null; }
+  if (!surname || !name || !dob || !gender || !year) { showToast("Please complete all required fields.", "warning"); return null; }
 
+  return { title, surname, name, dob, gender, year, cong };
+}
+
+function registerMemberFromForm(e) {
+  e.preventDefault();
+  const fields = readMemberFormFields();
+  if (!fields) return; // validation failed — leave the modal open so the error is visible in context
+
+  try { bootstrap.Modal.getInstance(document.getElementById('addMemberModal'))?.hide(); } catch (err) {}
+
+  const db = getDatabase();
+  if (!db.Member) db.Member = [];
+
+  const exactMatch = findExactMemberMatch(db.Member, fields);
+  if (exactMatch) { finishRegisterMember(fields, { member: exactMatch, updates: null }); return; }
+
+  const candidates = findMemberMatches(fields, db.Member);
+  if (candidates.length > 0) {
+    openPossibleMatchModal(fields, candidates, (resolution) => {
+      finishRegisterMember(fields, resolution);
+    });
+    return;
+  }
+
+  finishRegisterMember(fields, null);
+}
+
+// `resolution` is either null (create a new member) or { member, updates }, where `member` is the
+// existing Member to link to and `updates` (if any) are field:newValue overrides the user chose to
+// apply from the "which value do I keep" step — e.g. correcting a typo on file via this registration.
+function finishRegisterMember(fields, resolution) {
   const db = getDatabase();
   if (!db.Member) db.Member = [];
   if (!db.Affiliation) db.Affiliation = [];
 
-  let member = db.Member.find(m =>
-    m.surname.toLowerCase() === surname.toLowerCase() &&
-    m.name.toLowerCase() === name.toLowerCase() &&
-    m.dob === dob && m.gender === gender
-  );
-  const isNew = !member;
-  if (isNew) {
-    member = { memberID: generateGUID(), title, surname, name, dob, gender };
-    db.Member.push(member);
+  const existingMember = resolution ? resolution.member : null;
+  let { member, isNew } = resolveMember(db.Member, fields, existingMember);
+
+  if (!isNew && resolution && resolution.updates) {
+    const mIdx = db.Member.findIndex(m => m.memberID === member.memberID);
+    if (mIdx > -1) {
+      const oldMember = { ...db.Member[mIdx] };
+      db.Member[mIdx] = { ...db.Member[mIdx], ...resolution.updates };
+      member = db.Member[mIdx];
+      trackChange("updateMember", member, oldMember);
+    }
   }
 
-  if (db.Affiliation.find(a => a.memberID === member.memberID && String(a.congregationID) === String(cong) && Number(a.yearRegistered) === year)) {
-    showToast(`${surname} ${name} is already registered for ${year}.`, "warning"); return;
+  if (db.Affiliation.find(a => a.memberID === member.memberID && String(a.congregationID) === String(fields.cong) && Number(a.yearRegistered) === fields.year)) {
+    showToast(`${fields.surname} ${fields.name} is already registered for ${fields.year}.`, "warning"); return;
   }
 
-  const congObj  = (db.Congregation || []).find(c => String(c.congregationID) === String(cong)) || {};
+  const congObj  = (db.Congregation || []).find(c => String(c.congregationID) === String(fields.cong)) || {};
   const presObj  = (db.Presbytery   || []).find(p => String(p.presbyteryID)   === String(congObj.presbyteryID)) || {};
   const affiliation = {
-    affiliationID: generateGUID(), memberID: member.memberID, congregationID: cong, yearRegistered: year,
+    affiliationID: generateGUID(), memberID: member.memberID, congregationID: fields.cong, yearRegistered: fields.year,
     title: member.title || '', surname: member.surname || '', name: member.name || '', dob: member.dob || '', gender: member.gender || '',
     congregationName: congObj.name || '', presbyteryName: presObj.name || ''
   };
@@ -752,51 +950,111 @@ function parseBulkMembers(text) {
   }, []);
 }
 
+let _pendingBulkReviewFn = null;
+
+// Shows the review table for bulk-import rows that fuzzy-matched an existing member but weren't
+// an exact match. onResolve(decisions) fires once the user hits Commit, where `decisions` is an
+// array parallel to `ambiguous`: either the matched Member object (link) or null (create new).
+function openBulkMatchReviewModal(ambiguous, onResolve) {
+  _pendingBulkReviewFn = () => {
+    const decisions = ambiguous.map((item, i) => {
+      const sel = document.getElementById(`bulkMatchDecision_${i}`);
+      return (sel && sel.value === 'link') ? item.best.member : null;
+    });
+    onResolve(decisions);
+  };
+
+  const tbody = document.getElementById('bulkMatchReviewBody');
+  if (tbody) {
+    tbody.innerHTML = ambiguous.map((item, i) => {
+      const r = item.row, m = item.best.member, pct = Math.round(item.best.overall * 100);
+      return `
+        <tr>
+          <td>${r.title ? r.title + ' ' : ''}${r.surname}, ${r.name}<br><span class="text-muted small">DOB ${r.dob || '—'}, ${r.gender || '—'}</span></td>
+          <td>${m.title ? m.title + ' ' : ''}${m.surname}, ${m.name}<br><span class="text-muted small">DOB ${m.dob || '—'}, ${m.gender || '—'}</span></td>
+          <td>${pct}%</td>
+          <td>
+            <select id="bulkMatchDecision_${i}" class="form-select form-select-sm">
+              <option value="new" selected>Create new member</option>
+              <option value="link">Link to existing</option>
+            </select>
+          </td>
+        </tr>`;
+    }).join('');
+  }
+
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('bulkMatchReviewModal')).show();
+}
+
 function registerBulkMembersFromTextarea() {
   const text = document.getElementById('bulkMemberTextarea').value || '';
-  const bulkCongEl = document.getElementById('bulkCongregation');
-  const cong = (bulkCongEl && bulkCongEl.value) || localStorage.getItem('selectedCongregation') || null;
+  const bulkPresID = document.getElementById('bulkPresbytery')?.value || '';
+  const cong = document.getElementById('bulkCongregation')?.value || '';
+  if (!bulkPresID) { showToast('Please select a presbytery.', 'warning'); return; }
   if (!cong) { showToast('Please select a congregation.', 'warning'); return; }
 
-  const parsed = parseBulkMembers(text);
+  const parsed = parseBulkMembers(text).filter(r => r.surname && r.name && r.dob && r.gender);
   if (!parsed.length) { showToast('No valid rows. Format: Title,Surname,Name,DOB,Gender,Period', 'warning'); return; }
 
   const db = getDatabase();
   if (!db.Member) db.Member = [];
   if (!db.Affiliation) db.Affiliation = [];
 
+  // Scan against snapshots, not the live arrays. Nothing is written into the real (shared,
+  // cached) db.Member/db.Affiliation until the whole batch — including any ambiguous-match
+  // decisions — is finalized, so canceling the review modal leaves the database untouched
+  // instead of leaving orphaned rows sitting in memory for some later unrelated save to persist.
+  const scratchMembers = db.Member.slice();
   let added = 0;
   const newMembers = [], newAffs = [];
+  const ambiguous = [];
 
-  for (const r of parsed) {
-    if (!r.surname || !r.name || !r.dob || !r.gender) continue;
-    let member = db.Member.find(m =>
-      m.surname.toLowerCase() === r.surname.toLowerCase() &&
-      m.name.toLowerCase() === r.name.toLowerCase() &&
-      m.dob === r.dob && m.gender === r.gender
-    );
-    if (!member) {
-      member = { memberID: generateGUID(), title: r.title || '', surname: r.surname, name: r.name, dob: r.dob, gender: r.gender };
-      db.Member.push(member); newMembers.push(member); added++;
-    }
-    if (!db.Affiliation.some(a => a.memberID === member.memberID && String(a.congregationID) === String(cong) && Number(a.yearRegistered) === r.year)) {
-      const bulkCongObj = (db.Congregation || []).find(c => String(c.congregationID) === String(cong)) || {};
-      const bulkPresObj = (db.Presbytery   || []).find(p => String(p.presbyteryID)   === String(bulkCongObj.presbyteryID)) || {};
-      const aff = { affiliationID: generateGUID(), memberID: member.memberID, congregationID: cong, yearRegistered: r.year,
-        title: member.title || '', surname: member.surname || '', name: member.name || '', dob: member.dob || '', gender: member.gender || '',
-        congregationName: bulkCongObj.name || '', presbyteryName: bulkPresObj.name || '' };
-      db.Affiliation.push(aff); newAffs.push(aff);
-    }
+  function buildAffiliation(member, r) {
+    const bulkCongObj = (db.Congregation || []).find(c => String(c.congregationID) === String(cong)) || {};
+    const bulkPresObj = (db.Presbytery   || []).find(p => String(p.presbyteryID)   === String(bulkCongObj.presbyteryID)) || {};
+    return { affiliationID: generateGUID(), memberID: member.memberID, congregationID: cong, yearRegistered: r.year,
+      title: member.title || '', surname: member.surname || '', name: member.name || '', dob: member.dob || '', gender: member.gender || '',
+      congregationName: bulkCongObj.name || '', presbyteryName: bulkPresObj.name || '' };
   }
 
-  saveDatabase(db);
-  newMembers.forEach(m => trackChange("addMember", m, null));
-  newAffs.forEach(a => trackChange("addAffiliation", a, null));
-  if (typeof updateFileStatus === "function") updateFileStatus();
+  function commitRow(r, existingMember) {
+    const { member, isNew } = resolveMember(scratchMembers, r, existingMember);
+    if (isNew) { newMembers.push(member); added++; }
+    const alreadyRegistered =
+      db.Affiliation.some(a => a.memberID === member.memberID && String(a.congregationID) === String(cong) && Number(a.yearRegistered) === r.year) ||
+      newAffs.some(a => a.memberID === member.memberID && String(a.congregationID) === String(cong) && Number(a.yearRegistered) === r.year);
+    if (!alreadyRegistered) newAffs.push(buildAffiliation(member, r));
+  }
 
-  document.getElementById('bulkMemberTextarea').value = '';
-  showToast(`Imported ${parsed.length} rows (${added} new members).`);
-  loadMembers();
+  function finishBulkImport() {
+    db.Member.push(...newMembers);
+    db.Affiliation.push(...newAffs);
+    saveDatabase(db);
+    newMembers.forEach(m => trackChange("addMember", m, null));
+    newAffs.forEach(a => trackChange("addAffiliation", a, null));
+    if (typeof updateFileStatus === "function") updateFileStatus();
+
+    document.getElementById('bulkMemberTextarea').value = '';
+    showToast(`Imported ${parsed.length} rows (${added} new members).`);
+    loadMembers();
+  }
+
+  for (const r of parsed) {
+    const exactMatch = findExactMemberMatch(scratchMembers, r);
+    if (exactMatch) { commitRow(r, exactMatch); continue; }
+
+    const candidates = findMemberMatches(r, scratchMembers);
+    if (candidates.length > 0) { ambiguous.push({ row: r, best: candidates[0] }); continue; }
+
+    commitRow(r, null);
+  }
+
+  if (ambiguous.length === 0) { finishBulkImport(); return; }
+
+  openBulkMatchReviewModal(ambiguous, (decisions) => {
+    ambiguous.forEach((item, i) => commitRow(item.row, decisions[i]));
+    finishBulkImport();
+  });
 }
 
 // -------------------- EVENT WIRING --------------------
@@ -844,17 +1102,7 @@ document.addEventListener("DOMContentLoaded", () => { initDatabase().then(() => 
   const form = document.getElementById("memberForm");
   if (form) form.addEventListener("submit", registerMemberFromForm);
 
-  // Toggle add form
-  const toggleAddBtn = document.getElementById('toggleAddForm');
-  const addSection   = document.getElementById('addMemberSection');
-  if (toggleAddBtn && addSection) {
-    toggleAddBtn.addEventListener('click', () => {
-      addSection.classList.toggle('d-none');
-      toggleAddBtn.innerHTML = addSection.classList.contains('d-none')
-        ? '<i class="bi bi-plus-circle me-1"></i>Add Member'
-        : '<i class="bi bi-x-circle me-1"></i>Hide Form';
-    });
-  }
+  // Add Member now opens as a modal via data-bs-toggle — no manual toggle JS needed.
 
   // Toggle bulk import
   const toggleBulkBtn = document.getElementById('toggleBulkImport');
@@ -897,6 +1145,38 @@ document.addEventListener("DOMContentLoaded", () => { initDatabase().then(() => 
     if (_pendingDeleteFn) { _pendingDeleteFn(); _pendingDeleteFn = null; }
   });
 
+  // Possible-match modal (single Add Member) — one "Link to this person" button per candidate
+  // card, delegated since the cards are re-rendered fresh each time the modal opens. These just
+  // forward to whatever openPossibleMatchModal() currently has pending; that handler decides
+  // whether to resolve immediately, show the per-field diff-resolution step (staying open), or
+  // (Create New) skip straight through — and owns hiding/clearing state once truly resolved.
+  document.getElementById('possibleMatchCards')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.link-candidate-btn');
+    if (!btn) return;
+    _pendingMatchChoiceFn?.(parseInt(btn.dataset.idx, 10));
+  });
+  document.getElementById('createNewMemberBtn')?.addEventListener('click', () => {
+    _pendingMatchChoiceFn?.(null);
+  });
+  document.getElementById('possibleMatchConfirmLinkBtn')?.addEventListener('click', () => {
+    _pendingResolveConfirmFn?.();
+  });
+  document.getElementById('possibleMatchModal')?.addEventListener('hidden.bs.modal', () => {
+    // Dismissed via X / backdrop / Escape without resolving — abandon silently, nothing was saved.
+    _pendingMatchChoiceFn = null;
+    _pendingResolveConfirmFn = null;
+    setPossibleMatchView('cards'); // reset so a future open doesn't start on a stale resolve view
+  });
+
+  // Bulk match review modal
+  document.getElementById('confirmBulkMatchReviewBtn')?.addEventListener('click', () => {
+    try { bootstrap.Modal.getInstance(document.getElementById('bulkMatchReviewModal')).hide(); } catch (e) {}
+    if (_pendingBulkReviewFn) { const fn = _pendingBulkReviewFn; _pendingBulkReviewFn = null; fn(); }
+  });
+  document.getElementById('bulkMatchReviewModal')?.addEventListener('hidden.bs.modal', () => {
+    _pendingBulkReviewFn = null; // modal dismissed without committing (Cancel Import / backdrop is static, so this is X or Cancel Import) — abandon silently, nothing was saved
+  });
+
   // Init keyboard-help popover
   const kbdBtn = document.getElementById('kbdHelpBtn');
   if (kbdBtn) new bootstrap.Popover(kbdBtn, { sanitize: false });
@@ -925,15 +1205,9 @@ document.addEventListener("DOMContentLoaded", () => { initDatabase().then(() => 
     // Escape — blur input or close open forms
     if (e.key === 'Escape') {
       if (inInput) { document.activeElement.blur(); return; }
-      const addSection = document.getElementById('addMemberSection');
+      // Add Member is a Bootstrap modal now — it already closes on Escape natively.
       const bulkSection = document.getElementById('bulkSection');
-      const toggleAddBtn = document.getElementById('toggleAddForm');
       const toggleBulkBtn = document.getElementById('toggleBulkImport');
-      if (addSection && !addSection.classList.contains('d-none')) {
-        addSection.classList.add('d-none');
-        if (toggleAddBtn) toggleAddBtn.innerHTML = '<i class="bi bi-plus-circle me-1"></i>Add Member';
-        return;
-      }
       if (bulkSection && !bulkSection.classList.contains('d-none')) {
         bulkSection.classList.add('d-none');
         if (toggleBulkBtn) toggleBulkBtn.innerHTML = '<i class="bi bi-upload me-1"></i>Bulk Import';
@@ -960,7 +1234,7 @@ document.addEventListener("DOMContentLoaded", () => { initDatabase().then(() => 
 
     switch (e.key) {
       case 'n': case 'N':
-        // N — toggle Add Member form
+        // N — open Add Member modal
         document.getElementById('toggleAddForm')?.click();
         break;
       case 'r': case 'R':

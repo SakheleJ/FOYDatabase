@@ -1,3 +1,0 @@
-# FOYIdeas
-FOY Projects
-hey 

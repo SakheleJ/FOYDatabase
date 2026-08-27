@@ -5,6 +5,11 @@
 var SHEET_URL_KEY    = "foySheetURL";
 var LAST_SYNC_KEY    = "foyLastSync";
 
+// Fixed Directory endpoint — every device logs in against the same Directory,
+// which then tells the client which data sheet (structure) to connect to.
+// See google-apps-script/directory/DIRECTORY_SETUP.md.
+var DIRECTORY_URL = "https://script.google.com/macros/s/AKfycbwAMhNYQb3eUdXn1IFJJIE3mDcdqTzgwWbdEyNDGNZc9zaA6LzXIFpqoHdjMOgyMVJ--Q/exec";
+
 function getSheetURL() {
   return localStorage.getItem(SHEET_URL_KEY) || "";
 }
@@ -142,6 +147,33 @@ async function postToSheet(action, record, opts) {
 
   // Keep lastSyncTime current so the next delta doesn't re-fetch our own write
   if (json.lastModified) saveLastSyncTime(json.lastModified);
+
+  return json.result;
+}
+
+// ============================================================
+// POST an action straight to the Directory (login, user/structure
+// management) — separate from postToSheet() since these calls target
+// DIRECTORY_URL, not the currently-connected data sheet.
+// ============================================================
+async function postToDirectory(action, record, opts) {
+  opts = opts || {};
+
+  var response = await fetch(DIRECTORY_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: JSON.stringify({
+      action:     action,
+      record:     record,
+      changedBy:  getCurrentUserName(),
+      changes:    opts.changes    || {},
+      recordName: opts.recordName || ""
+    })
+  });
+
+  if (!response.ok) throw new Error("Directory write failed (" + response.status + ").");
+  var json = await response.json();
+  if (!json.success) throw new Error(json.error || "Directory write error.");
 
   return json.result;
 }

@@ -1,95 +1,110 @@
+:root {
+  --bs-primary: #1e3a8a;
+  --bs-primary-rgb: 30, 58, 138;
+
+  /* Button/card/input corner radius — matches the FOY Console mockup */
+  --bs-border-radius-sm: 7px;
+  --bs-border-radius: 10px;
+  --bs-border-radius-lg: 12px;
+
+  --page-canvas: #f4f5f6;
+  --page-surface: #ffffff;
+
+  /* Inputs/selects need their own tone, distinct from BOTH the plain page
+     canvas and a card's surface — they sit on both depending on context. */
+  --field-bg: #eceef0;
+
+  /* Lux's default body weight (300) and body/secondary text colors
+     (#55595c, and that same color at 75% opacity) render too thin and pale
+     against white. Bootstrap's own classic dark grey reads far more solid
+     at the same font size, without needing to change typeface. */
+  --bs-body-font-weight: 400;
+}
+[data-bs-theme="dark"] {
+  --page-canvas: #121314;
+  --page-surface: #1e2022;
+  --field-bg: #2a2d30;
+}
+:root:not([data-bs-theme="dark"]) {
+  --bs-body-color: #212529;
+  --bs-body-color-rgb: 33, 37, 41;
+  --bs-secondary-color: rgba(33, 37, 41, 0.75);
+  --bs-secondary-color-rgb: 33, 37, 41;
+}
+
 body {
-  font-family: Arial, sans-serif;
-  background: #f5f7fa;
-  
-  /* display: flex; */
-  /* flex-direction: row; */
-
-  display: grid;
-  grid-template-columns: 250px 1fr;
-  grid-template-rows: auto auto;
-  grid-template-areas:
-    "header header"
-    "nav main";
-
-  justify-content: center;
-  align-items: center;
-  /* height: 100vh; */
+  background: var(--page-canvas);
 }
 
-.header {
-  grid-area: header;
-  display: flex;
-  align-items: center;
-  background: #1e3a8a;
-  color: white;
-
-}
-/* header div {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}*/
-.main {
-  grid-area: main;
-}
-.nav {
-  background: #1e3b8a7a;
-  border-radius: 8px;
-  height: -webkit-fill-available;
-  /* opacity: 0.25; */
-  transition: background-color 0.2s ease, padding-left 0.2s ease;
-}
-.nav-link:hover, .nav-link:active {
-  background-color: rgba(255,255,255,0.1);
-  padding-left: 12px;
+/* Bootstrap's card/modal surfaces default to the same near-black as the page
+   background in Lux's dark mode, which leaves no contrast against the canvas. */
+[data-bs-theme="dark"] .card,
+[data-bs-theme="dark"] .modal-content {
+  --bs-card-bg: var(--page-surface);
+  --bs-modal-bg: var(--page-surface);
 }
 
-.divider {
-  width: 1px;
-  height: 25px;
-  background: white;
-  margin: 0 10px;
+/* The brand navy is dark enough that, against an already-dark page, a
+   bg-primary modal header stops reading as a distinct colored title bar —
+   it just blends into the general darkness even though the white title text
+   on it is technically high-contrast. Brighten it for dark mode only. */
+[data-bs-theme="dark"] .modal-header.bg-primary {
+  background-color: #3452b4 !important;
 }
 
-
-.container,
-.form-box {
-  background: #fff;
-  padding: 25px;
-  border-radius: 8px;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-  width: 320px;
-  text-align: center;
-  margin-bottom: 20px;
-  /* ⬅ adds space below the header */
+/* Lux hardcodes border-radius:0 on these controls (its own --bs-btn-border-radius
+   variable is defined but never consumed) — this is the "square button" look. */
+.btn {
+  border-radius: var(--bs-btn-border-radius);
 }
-
-.form-box {
-  display: none;
+/* Lux hardcodes a literal background (#f7f7f9, unchanged in dark mode) and a
+   zero-width border on form controls, so they only ever read correctly when
+   sitting directly on a plain white/near-black page — inside a card, or on
+   the page canvas itself, they blend straight into whatever's behind them. */
+.form-control,
+.form-select {
+  border-radius: var(--bs-border-radius-sm);
+  background-color: var(--field-bg);
+  border: 1px solid var(--bs-border-color-translucent);
+  color: var(--bs-body-color);
 }
-
-.file-section {
-  margin-bottom: 15px;
-  padding: 10px;
-  background: #f0f0f0;
-  border-radius: 8px;
+/* Lux's own .form-control:focus{background-color:#f7f7f9} is unconditional
+   (not scoped to light mode) and more specific than the plain rule above, so
+   the instant you click into a field — i.e. exactly when you start typing —
+   the background snaps back to light regardless of theme, with the (correct,
+   theme-aware) text color now sitting on the wrong background. That's why
+   typed text is unreadable until blur restores the plain (non-:focus) rule. */
+.form-control:focus,
+.form-select:focus {
+  background-color: var(--field-bg);
 }
-
-.file-section h3 {
-  margin: 0 0 10px 0;
+.form-control::placeholder {
+  color: var(--bs-secondary-color);
 }
-
-
-
-input,
-select
-/*, button */ { 
-  width: 90%;
-  padding: 10px;
-  margin: 8px 0;
-  border: 1px solid #ccc;
-  border-radius: 6px;
+/* Chrome/Edge force their own background + text color on autofilled inputs
+   via an internal style that plain background-color/color can't touch —
+   this is the standard override trick, using an inset shadow to fake the
+   field's real background back in. */
+.form-control:-webkit-autofill,
+.form-control:-webkit-autofill:hover,
+.form-control:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--bs-body-color);
+  -webkit-box-shadow: 0 0 0 1000px var(--field-bg) inset;
+  box-shadow: 0 0 0 1000px var(--field-bg) inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
+/* Lux's own [data-bs-theme=dark] .form-control{color:#55595c} rule is more
+   specific than the plain .form-control rule above, so it still wins over it
+   in dark mode — pinning input text to a dark grey never meant to sit on a
+   dark field. Match its specificity so ours applies instead. */
+[data-bs-theme="dark"] .form-control,
+[data-bs-theme="dark"] .form-select {
+  color: var(--bs-body-color);
+}
+.input-group-text {
+  background-color: var(--field-bg);
+  color: var(--bs-secondary-color);
+  border: 1px solid var(--bs-border-color-translucent);
 }
 
 button:hover,
@@ -103,7 +118,7 @@ button:hover,
 
 .buttonLogout,
 .buttonRegister {
-  background: #1e3a8a;
+  background: var(--bs-primary);
   border: none;
   cursor: pointer;
   width: auto;
@@ -121,39 +136,32 @@ table {
   margin-top: 10px;
 }
 
-thead {
-  background: #007BFF;
-  color: #fff;
-}
-
 th,
 td {
   padding: 8px;
   border: 1px solid #ccc;
   text-align: left;
 }
+[data-bs-theme="dark"] th,
+[data-bs-theme="dark"] td {
+  border-color: var(--bs-border-color);
+}
 
 tbody tr:hover {
   background: #e0f0ff;
   cursor: pointer;
 }
+[data-bs-theme="dark"] tbody tr:hover {
+  background: rgba(127, 157, 224, 0.18);
+}
 
 tbody tr.selected {
   background: #b3d7ff;
 }
-
-
-
-.form-box input {
-  display: block;
-  width: 100%;
-  margin-bottom: 10px;
-  padding: 8px;
+[data-bs-theme="dark"] tbody tr.selected {
+  background: rgba(127, 157, 224, 0.3);
 }
 
-.form-box button {
-  margin-right: 10px;
-}
 
 
 .cong-card {
@@ -181,6 +189,9 @@ tbody tr.selected {
 .presby-card.active {
     border: 2px solid #0d6efd;
     background: #e7f1ff;
+}
+[data-bs-theme="dark"] .presby-card.active {
+    background: rgba(13, 110, 253, 0.15);
 }
 
 .presby-btn {
@@ -213,5 +224,140 @@ tbody tr.selected {
 .affiliation-card:hover {
     transform: translateY(-3px);
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+/* Stat cards */
+.stat-card {
+    border-radius: 10px;
+    padding: 14px 16px;
+    box-shadow: 0 1px 2px rgba(26,26,26,0.06), 0 1px 1px rgba(26,26,26,0.04);
+}
+.stat-value {
+    font-size: 24px;
+    font-weight: 800;
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+}
+.stat-label {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    font-weight: 700;
+    color: var(--bs-secondary-color, #6b7075);
+    margin-top: 6px;
+}
+
+/* Page search — icon-in-input pill, matches the topbar search from the mockup */
+.page-search {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+.page-search i {
+    position: absolute;
+    left: 11px;
+    color: var(--bs-secondary-color);
+    pointer-events: none;
+    font-size: 0.85rem;
+}
+.page-search input {
+    padding-left: 32px;
+}
+
+/* Page title dropdown — the mockup's "structure selector" look, applied to
+   page-level sort/filter selects. The real <select> stays in the DOM (hidden)
+   as the source of truth; see shell.js enhanceDropdownSelects(). */
+.dd-select-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: var(--bs-border-radius-sm);
+    padding: 6px 10px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--bs-body-color);
+    cursor: pointer;
+}
+.dd-select-btn:hover,
+.dd-select-btn:focus {
+    background: var(--page-canvas);
+}
+.dd-select-chev {
+    font-size: 0.7rem;
+    color: var(--bs-secondary-color);
+}
+.dd-select-btn::after {
+    display: none;
+}
+
+/* Overview page panel + table — matches the FOY Console mockup's panel/table.data */
+.panel {
+    background: var(--page-surface);
+    border: 1px solid var(--bs-border-color-translucent);
+    border-radius: var(--bs-border-radius);
+    box-shadow: 0 1px 2px rgba(26,26,26,0.06), 0 1px 1px rgba(26,26,26,0.04);
+    overflow: hidden;
+}
+.panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--bs-border-color-translucent);
+}
+.panel-head h6 {
+    font-size: 14px;
+    font-weight: 800;
+    margin: 0;
+}
+.panel-body-scroll {
+    overflow-x: auto;
+}
+table.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+    margin: 0;
+}
+table.data-table th {
+    text-align: left;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--bs-secondary-color);
+    font-weight: 700;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--bs-border-color-translucent);
+    background: var(--page-canvas);
+    white-space: nowrap;
+}
+table.data-table td {
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--bs-border-color-translucent);
+    color: var(--bs-body-color);
+    vertical-align: middle;
+}
+table.data-table tbody tr:last-child td {
+    border-bottom: none;
+}
+table.data-table tbody tr:hover {
+    background: var(--page-canvas);
+}
+
+/* Hand-rolled SVG line charts (dashboard.js renderLineChartInto) — theme-aware
+   grid/axis colors instead of hardcoded light hex values. */
+.chart-grid-line {
+    stroke: var(--bs-border-color-translucent);
+}
+.chart-axis-line {
+    stroke: var(--bs-border-color);
+}
+.chart-axis-label {
+    fill: var(--bs-secondary-color);
+}
+.chart-avg-line {
+    stroke: var(--bs-secondary-color);
 }
 

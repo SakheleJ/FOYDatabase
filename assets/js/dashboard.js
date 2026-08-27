@@ -56,16 +56,18 @@ function computeDashboardStats(period) {
     retentionRate = Math.round((retained / memberIDsInPrev.size) * 100);
   }
 
-  let totalAge = 0, ageCount = 0;
-  memberIDsInPeriod.forEach(memberID => {
-    const allForMember = affiliations.filter(a => a.memberID === memberID);
-    if (allForMember.length > 0) {
-      const firstYear = Math.min(...allForMember.map(a => parseInt(a.yearRegistered)));
-      totalAge += (p - firstYear);
-      ageCount++;
-    }
+  const asOfAge = new Date(p, 11, 31);
+  const seenForAge = new Set();
+  const agesInPeriod = [];
+  affsInPeriod.forEach(a => {
+    if (seenForAge.has(a.memberID)) return;
+    seenForAge.add(a.memberID);
+    const age = calcAge(a.dob, asOfAge);
+    if (age !== null) agesInPeriod.push(age);
   });
-  const avgMembershipAge = ageCount > 0 ? (totalAge / ageCount).toFixed(1) : null;
+  const avgMembershipAge = agesInPeriod.length > 0
+    ? (agesInPeriod.reduce((s, v) => s + v, 0) / agesInPeriod.length).toFixed(1)
+    : null;
 
   const congIDsInPeriod = new Set(affsInPeriod.map(a => String(a.congregationID)));
   const presIDsInPeriod = new Set(
@@ -230,13 +232,14 @@ function renderPresbyterBreakdown() {
       });
     }
     const genderTotal = males + females;
+    // femalePct derived as the complement so the two always sum to exactly 100.
     const malePct = genderTotal > 0 ? Math.round((males / genderTotal) * 100) : null;
-    const femalePct = genderTotal > 0 ? Math.round((females / genderTotal) * 100) : null;
+    const femalePct = genderTotal > 0 ? 100 - malePct : null;
 
+    let ages = [];
     let avgAge = null;
     if (targetPeriod) {
       const seen = new Set();
-      const ages = [];
       const asOf = new Date(targetPeriod, 11, 31);
       presAffs.filter(a => parseInt(a.yearRegistered) === targetPeriod).forEach(a => {
         if (seen.has(a.memberID)) return;
@@ -247,18 +250,19 @@ function renderPresbyterBreakdown() {
       if (ages.length > 0) avgAge = (ages.reduce((s, v) => s + v, 0) / ages.length).toFixed(1);
     }
 
-    let retention = null;
+    let retention = null, retainedCount = 0, prevCount = 0;
     if (targetPeriod) {
       const prevIDs = new Set(
         presAffs.filter(a => parseInt(a.yearRegistered) === targetPeriod - 1).map(a => a.memberID)
       );
+      prevCount = prevIDs.size;
       if (prevIDs.size > 0) {
-        const retained = [...prevIDs].filter(id => membersByPeriod[targetPeriod].has(id)).length;
-        retention = Math.round((retained / prevIDs.size) * 100);
+        retainedCount = [...prevIDs].filter(id => membersByPeriod[targetPeriod].has(id)).length;
+        retention = Math.round((retainedCount / prevIDs.size) * 100);
       }
     }
 
-    return { pres, membersByPeriod, sparkValues, malePct, femalePct, avgAge, retention };
+    return { pres, membersByPeriod, sparkValues, males, females, malePct, femalePct, ages, avgAge, retainedCount, prevCount, retention };
   });
 
   // Sort
@@ -285,6 +289,27 @@ function renderPresbyterBreakdown() {
 
   const dash = '<span class="text-muted">—</span>';
 
+  // Totals row — always reflects the full presbytery set regardless of sort order,
+  // and is weighted (summed counts) rather than an average of the per-presbytery percentages.
+  const totalsByPeriod = {};
+  periods.forEach(p => {
+    totalsByPeriod[p] = rows.reduce((sum, r) => sum + (r.membersByPeriod[p]?.size || 0), 0);
+  });
+  const totalSparkValues = periods.map(p => totalsByPeriod[p]);
+
+  const totalMales = rows.reduce((s, r) => s + r.males, 0);
+  const totalFemales = rows.reduce((s, r) => s + r.females, 0);
+  const totalGenderCount = totalMales + totalFemales;
+  const totalMalePct = totalGenderCount > 0 ? Math.round((totalMales / totalGenderCount) * 100) : null;
+  const totalFemalePct = totalGenderCount > 0 ? 100 - totalMalePct : null;
+
+  const allAges = rows.flatMap(r => r.ages);
+  const totalAvgAge = allAges.length > 0 ? (allAges.reduce((s, v) => s + v, 0) / allAges.length).toFixed(1) : null;
+
+  const totalRetainedCount = rows.reduce((s, r) => s + r.retainedCount, 0);
+  const totalPrevCount = rows.reduce((s, r) => s + r.prevCount, 0);
+  const totalRetention = totalPrevCount > 0 ? Math.round((totalRetainedCount / totalPrevCount) * 100) : null;
+
   tbody.innerHTML = rows.map(r => `
     <tr>
       <td class="fw-semibold">${r.pres.name}</td>
@@ -301,7 +326,23 @@ function renderPresbyterBreakdown() {
         : dash
       }</td>
     </tr>
-  `).join('');
+  `).join('') + `
+    <tr class="table-active fw-semibold">
+      <td>Total</td>
+      ${periods.map(p => {
+        const count = totalsByPeriod[p] || 0;
+        return `<td class="text-center">${count > 0 ? count : dash}</td>`;
+      }).join('')}
+      <td class="text-center">${sparklineSVG(totalSparkValues)}</td>
+      <td class="text-center">${totalMalePct !== null ? totalMalePct + '%' : dash}</td>
+      <td class="text-center">${totalFemalePct !== null ? totalFemalePct + '%' : dash}</td>
+      <td class="text-center">${totalAvgAge !== null ? totalAvgAge : dash}</td>
+      <td class="text-center">${totalRetention !== null
+        ? `<span class="${totalRetention >= 80 ? 'text-success' : totalRetention >= 60 ? 'text-warning' : 'text-danger'} fw-semibold">${totalRetention}%</span>`
+        : dash
+      }</td>
+    </tr>
+  `;
 }
 
 // ── Generic Line Chart (SVG) ─────────────────────────────────────────────────
@@ -326,12 +367,12 @@ function renderLineChartInto(container, periods, series, avgSeries, opts) {
   const yOf = v => mt + ph - ((v - yMin) / (yMax - yMin)) * ph;
 
   const grid = [0, 0.25, 0.5, 0.75, 1].map(f => yMin + f * (yMax - yMin)).map(v => `
-    <line x1="${ml}" y1="${yOf(v)}" x2="${W - mr}" y2="${yOf(v)}" stroke="#e9ecef" stroke-width="1"/>
-    <text x="${ml - 6}" y="${yOf(v) + 4}" text-anchor="end" font-size="10" fill="#adb5bd">${Math.round(v)}${opts.unit}</text>
+    <line class="chart-grid-line" x1="${ml}" y1="${yOf(v)}" x2="${W - mr}" y2="${yOf(v)}" stroke-width="1"/>
+    <text class="chart-axis-label" x="${ml - 6}" y="${yOf(v) + 4}" text-anchor="end" font-size="10">${Math.round(v)}${opts.unit}</text>
   `).join('');
 
   const xLabels = periods.map((p, i) =>
-    `<text x="${xOf(i)}" y="${H - mb + 16}" text-anchor="middle" font-size="10" fill="#6c757d">${p}</text>`
+    `<text class="chart-axis-label" x="${xOf(i)}" y="${H - mb + 16}" text-anchor="middle" font-size="10">${p}</text>`
   ).join('');
 
   function buildPath(values) {
@@ -362,7 +403,7 @@ function renderLineChartInto(container, periods, series, avgSeries, opts) {
   if (avgSeries) {
     const avgPath = buildPath(avgSeries);
     avgLine = avgPath
-      ? `<path d="${avgPath}" fill="none" stroke="#6c757d" stroke-width="1.5" stroke-dasharray="6,4" stroke-linecap="round" style="pointer-events:none;"/>`
+      ? `<path class="chart-avg-line" d="${avgPath}" fill="none" stroke-width="1.5" stroke-dasharray="6,4" stroke-linecap="round" style="pointer-events:none;"/>`
       : '';
   }
 
@@ -374,9 +415,9 @@ function renderLineChartInto(container, periods, series, avgSeries, opts) {
       font-size:0.75rem;padding:5px 10px;border-radius:6px;
       white-space:nowrap;z-index:10;
     "></div>
-    <svg viewBox="0 0 ${W} ${H}" width="100%" height="auto" style="display:block;overflow:visible;">
+    <svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;height:auto;overflow:visible;">
       ${grid}
-      <line x1="${ml}" y1="${mt}" x2="${ml}" y2="${H - mb}" stroke="#dee2e6" stroke-width="1"/>
+      <line class="chart-axis-line" x1="${ml}" y1="${mt}" x2="${ml}" y2="${H - mb}" stroke-width="1"/>
       ${seriesLines}
       ${avgLine}
       ${xLabels}
@@ -448,9 +489,9 @@ function buildMetricTableHTML(periods, series, avgSeries, opts) {
     </tr>`;
 
   return `
-    <div class="table-responsive" style="border-radius:10px;overflow:hidden;border:1px solid #dee2e6;">
-      <table class="table table-bordered table-sm table-hover align-middle mb-0">
-        <thead class="table-active">
+    <div class="panel-body-scroll">
+      <table class="table table-sm table-hover align-middle mb-0 data-table">
+        <thead>
           <tr>
             <th class="px-2">Presbytery</th>
             ${periods.map(p => `<th class="text-center px-2">${p}</th>`).join('')}
@@ -463,6 +504,33 @@ function buildMetricTableHTML(periods, series, avgSeries, opts) {
         </tbody>
       </table>
     </div>`;
+}
+
+// Picks a y-axis [min, max] that fits the actual data instead of always
+// starting at 0 — a tight cluster of values (e.g. retention in the 80s, or
+// ages in the 30s-40s) otherwise reads as a flat line hugging the top.
+function computeNiceRange(values, opts) {
+  opts = Object.assign({ hardMin: null, hardMax: null, minSpan: 10, step: 5 }, opts || {});
+  const vals = (values || []).filter(v => v !== null && v !== undefined && !isNaN(v));
+  if (!vals.length) return { min: opts.hardMin ?? 0, max: opts.hardMax ?? 100 };
+
+  let lo = Math.min(...vals);
+  let hi = Math.max(...vals);
+  if (hi - lo < opts.minSpan) {
+    const mid = (hi + lo) / 2;
+    lo = mid - opts.minSpan / 2;
+    hi = mid + opts.minSpan / 2;
+  }
+  const pad = (hi - lo) * 0.15;
+  lo -= pad;
+  hi += pad;
+
+  lo = Math.floor(lo / opts.step) * opts.step;
+  hi = Math.ceil(hi / opts.step) * opts.step;
+
+  if (opts.hardMin !== null) lo = Math.max(lo, opts.hardMin);
+  if (opts.hardMax !== null) hi = Math.min(hi, opts.hardMax);
+  return { min: lo, max: hi };
 }
 
 // ── Retention by Presbytery ──────────────────────────────────────────────────
@@ -495,9 +563,14 @@ function computeRetentionSeries() {
     return { name: pres.name, values, color: CHART_COLORS[i % CHART_COLORS.length] };
   });
 
-  const avgSeries = retPeriods.map((p, i) => {
-    const vals = series.map(d => d.values[i]).filter(v => v !== null);
-    return vals.length > 0 ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length) : null;
+  // Weighted by member count (not a plain mean of each presbytery's percentage),
+  // computed directly from all affiliations so it matches the top stat card's retention rate.
+  const avgSeries = retPeriods.map(p => {
+    const currAll = new Set(affiliations.filter(a => parseInt(a.yearRegistered) === p).map(a => a.memberID));
+    const prevAll = new Set(affiliations.filter(a => parseInt(a.yearRegistered) === p - 1).map(a => a.memberID));
+    if (prevAll.size === 0) return null;
+    const retained = [...prevAll].filter(id => currAll.has(id)).length;
+    return Math.round((retained / prevAll.size) * 100);
   });
 
   return { periods: retPeriods, series, avgSeries };
@@ -511,7 +584,9 @@ function renderRetentionChart() {
     container.innerHTML = '<p class="text-muted text-center py-3 mb-0">Need at least 2 periods of data to display retention trends.</p>';
     return;
   }
-  renderLineChartInto(container, data.periods, data.series, data.avgSeries, { yMin: 0, yMax: 100, unit: '%' });
+  const allVals = data.series.flatMap(s => s.values).concat(data.avgSeries);
+  const range = computeNiceRange(allVals, { hardMin: 0, hardMax: 100, minSpan: 20, step: 5 });
+  renderLineChartInto(container, data.periods, data.series, data.avgSeries, { yMin: range.min, yMax: range.max, unit: '%' });
 }
 
 function renderRetentionTable() {
@@ -530,22 +605,22 @@ function setRetentionView(mode) {
   _retentionView = mode;
   const chartEl = document.getElementById('retentionChart');
   const tableEl = document.getElementById('retentionTable');
-  const chartBtn = document.getElementById('retentionViewChartBtn');
-  const tableBtn = document.getElementById('retentionViewTableBtn');
+  const toggleBtn = document.getElementById('retentionViewToggleBtn');
   if (!chartEl || !tableEl) return;
   if (mode === 'table') {
     chartEl.style.display = 'none';
     tableEl.style.display = '';
-    chartBtn?.classList.remove('active');
-    tableBtn?.classList.add('active');
+    if (toggleBtn) toggleBtn.innerHTML = '<i class="bi bi-graph-up me-1"></i>View as graph';
     renderRetentionTable();
   } else {
     chartEl.style.display = '';
     tableEl.style.display = 'none';
-    chartBtn?.classList.add('active');
-    tableBtn?.classList.remove('active');
+    if (toggleBtn) toggleBtn.innerHTML = '<i class="bi bi-table me-1"></i>View as table';
     renderRetentionChart();
   }
+}
+function toggleRetentionView() {
+  setRetentionView(_retentionView === 'table' ? 'chart' : 'table');
 }
 
 // ── Membership Average Age by Presbytery ─────────────────────────────────────
@@ -582,9 +657,19 @@ function computeMembershipAgeSeries() {
     return { name: pres.name, values, color: CHART_COLORS[i % CHART_COLORS.length] };
   });
 
-  const avgSeries = allPeriods.map((p, i) => {
-    const vals = series.map(d => d.values[i]).filter(v => v !== null);
-    return vals.length > 0 ? +(vals.reduce((s, v) => s + v, 0) / vals.length).toFixed(1) : null;
+  // Weighted by member count (not a plain mean of each presbytery's average age),
+  // computed directly across every individual member registered that period.
+  const avgSeries = allPeriods.map(p => {
+    const asOf = new Date(p, 11, 31);
+    const seen = new Set();
+    const ages = [];
+    affiliations.filter(a => parseInt(a.yearRegistered) === p).forEach(a => {
+      if (seen.has(a.memberID)) return;
+      seen.add(a.memberID);
+      const age = calcAge(a.dob, asOf);
+      if (age !== null) ages.push(age);
+    });
+    return ages.length > 0 ? +(ages.reduce((s, v) => s + v, 0) / ages.length).toFixed(1) : null;
   });
 
   return { periods: allPeriods, series, avgSeries };
@@ -598,10 +683,9 @@ function renderMembershipAgeChart() {
     container.innerHTML = '<p class="text-muted text-center py-3 mb-0">No membership age data available.</p>';
     return;
   }
-  const allVals = data.series.flatMap(s => s.values).concat(data.avgSeries).filter(v => v !== null && v !== undefined);
-  const maxVal = allVals.length > 0 ? Math.max(...allVals) : 10;
-  const yMax = Math.max(10, Math.ceil((maxVal + 5) / 10) * 10);
-  renderLineChartInto(container, data.periods, data.series, data.avgSeries, { yMin: 0, yMax, unit: ' yrs' });
+  const allVals = data.series.flatMap(s => s.values).concat(data.avgSeries);
+  const range = computeNiceRange(allVals, { hardMin: 0, minSpan: 10, step: 5 });
+  renderLineChartInto(container, data.periods, data.series, data.avgSeries, { yMin: range.min, yMax: range.max, unit: ' yrs' });
 }
 
 function renderMembershipAgeTable() {
@@ -620,22 +704,22 @@ function setAgeView(mode) {
   _ageView = mode;
   const chartEl = document.getElementById('membershipAgeChart');
   const tableEl = document.getElementById('membershipAgeTable');
-  const chartBtn = document.getElementById('ageViewChartBtn');
-  const tableBtn = document.getElementById('ageViewTableBtn');
+  const toggleBtn = document.getElementById('ageViewToggleBtn');
   if (!chartEl || !tableEl) return;
   if (mode === 'table') {
     chartEl.style.display = 'none';
     tableEl.style.display = '';
-    chartBtn?.classList.remove('active');
-    tableBtn?.classList.add('active');
+    if (toggleBtn) toggleBtn.innerHTML = '<i class="bi bi-graph-up me-1"></i>View as graph';
     renderMembershipAgeTable();
   } else {
     chartEl.style.display = '';
     tableEl.style.display = 'none';
-    chartBtn?.classList.add('active');
-    tableBtn?.classList.remove('active');
+    if (toggleBtn) toggleBtn.innerHTML = '<i class="bi bi-table me-1"></i>View as table';
     renderMembershipAgeChart();
   }
+}
+function toggleAgeView() {
+  setAgeView(_ageView === 'table' ? 'chart' : 'table');
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
